@@ -154,3 +154,11 @@ cython_debug/
 
 # vscode
 .vscode/
+
+# static
+static/
+
+# samples
+sample1/
+sample2/
+sample3/
