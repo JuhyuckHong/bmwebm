@@ -56,6 +56,12 @@ def login():
     return jsonify({'access_token': access_token, 'message': 'Login success.'}), 200
 
 
+@app.route('/auth', methods=['GET'])
+@jwt_required()
+def auth():
+    return jsonify({'message': 'OK'}), 200
+
+
 @app.route('/thumbnails', methods=['GET'])
 @jwt_required()
 def get_thumbnails():
@@ -65,10 +71,10 @@ def get_thumbnails():
     return jsonify({'thumbnail_urls': thumbnail_urls}), 200
 
 
-@app.route('/image/<sitename>/<date>/<time>')
+@app.route('/image/<site>/<date>/<time>')
 @jwt_required()
-def protected_image(sitename, date, time):
-    return send_from_directory(os.path.join(os.getenv('IMAGES'), sitename, date), f'{date}_{time}.jpg')
+def protected_image(site, date, time):
+    return send_from_directory(os.path.join(os.getenv('IMAGES'), site, date), f'{date}_{time}.jpg')
 
 
 @app.route('/recent-image', methods=['GET'])
@@ -110,7 +116,7 @@ if __name__ == '__main__':
                 # If the folder does not exist, create an empty thumbnail
                 img = Image.new('RGB', (128, 128), color=(73, 109, 137))
                 thumbnail_path = os.path.join(
-                    'static', folder_name, f'thumbnail_{folder_name}.jpg')
+                    'static', folder_name, f'thumb_{folder_name}.jpg')
                 img.save(thumbnail_path)
                 continue
 
@@ -122,7 +128,7 @@ if __name__ == '__main__':
             with Image.open(latest_image_file) as img:
                 img.thumbnail((128, 128))
                 thumbnail_path = os.path.join(
-                    'static', f'thumbnail_{folder_name}.jpg')
+                    'static', f'thumb_{folder_name}.jpg')
                 img.save(thumbnail_path)
 
     app.run('localhost', port=3000, debug=True, use_reloader=False)
