@@ -116,7 +116,7 @@ if __name__ == '__main__':
                 # If the folder does not exist, create an empty thumbnail
                 img = Image.new('RGB', (128, 128), color=(73, 109, 137))
                 thumbnail_path = os.path.join(
-                    'static', folder_name, f'thumb_{folder_name}.jpg')
+                    'static', f'thumb_{folder_name}.jpg')
                 img.save(thumbnail_path)
                 continue
 
