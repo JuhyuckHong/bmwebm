@@ -73,7 +73,7 @@ def get_thumbnails():
     return jsonify({'thumbnail_urls': thumbnail_urls}), 200
 
 
-@app.route('/image/<site>/<date>/<time>')
+@app.route('/images/<site>/<date>/<time>')
 @jwt_required()
 def protected_image(site, date, time):
     return send_from_directory(os.path.join(os.getenv('IMAGES'),
@@ -82,18 +82,39 @@ def protected_image(site, date, time):
                                f'{date}_{time}.jpg')
 
 
-@app.route('/recent-image', methods=['GET'])
+@app.route('/images/<site>', methods=['GET'])
 @jwt_required()
-def get_recent_image():
-    # get the most recent image
-    pass
+def get_site_image_list_by_date(site):
+    # Define the path of the site
+    site_path = os.path.join(os.getenv("IMAGES"), site)
+
+    # Get the list of folders in the site
+    folder_list = glob.glob(os.path.join(site_path, '????-??-??'))
+
+    # Filter out items that are not directories
+    folder_list = [folder for folder in folder_list if os.path.isdir(folder)]
+
+    # Extract the date part from each folder
+    date_list = [os.path.basename(folder) for folder in folder_list]
+
+    # Return the date list
+    return jsonify({site: date_list}), 200
 
 
-@app.route('/images', methods=['GET'])
+@app.route('/images/<site>/<date>', methods=['GET'])
 @jwt_required()
-def get_images():
-    # get a list of all images
-    pass
+def get_site_image_list_in_date(site, date):
+    # Define the path of the site and the date
+    date_path = os.path.join(os.getenv("IMAGES"), site, date)
+
+    # Get the list of image files in the date folder
+    image_files = glob.glob(os.path.join(date_path, '*.jpg'))
+
+    # Extract the filename from each image file
+    image_list = [os.path.basename(file) for file in image_files]
+
+    # Return the image list
+    return jsonify({date: image_list}), 200
 
 
 if __name__ == '__main__':
