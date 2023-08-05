@@ -1,5 +1,6 @@
+import io
 import os
-from flask import Flask, request, jsonify, url_for, send_from_directory
+from flask import Flask, request, jsonify, url_for, send_from_directory, send_file
 from flask_jwt_extended import JWTManager, jwt_required, create_access_token
 from flask_pymongo import PyMongo
 from flask_cors import CORS
@@ -68,9 +69,13 @@ def auth():
 @jwt_required()
 def get_thumbnails():
     thumbnail_files = glob.glob('static/thumb_*.jpg')
-    thumbnail_urls = [url_for('static', filename=os.path.basename(file))
-                      for file in thumbnail_files]
-    return jsonify({'thumbnail_urls': thumbnail_urls}), 200
+    thumbnail_list = list()
+    for file in thumbnail_files:
+        site = os.path.basename(file).replace('thumb_', '').replace('.jpg', '')
+        thumbnail_url = url_for('static', filename=os.path.basename(file))
+        thumbnail_dict = {'site': site, 'url': thumbnail_url}
+        thumbnail_list.append(thumbnail_dict)
+    return jsonify({'thumbnail_urls': thumbnail_list}), 200
 
 
 @app.route('/images/<site>/recent', methods=['GET'])
@@ -94,12 +99,15 @@ def recent_image(site):
     # Find the most recent image file based on the file name
     recent_image_file = max(image_files, key=os.path.basename)
 
-    # Get the directory and the filename of the most recent image
-    image_directory = os.path.dirname(recent_image_file)
-    image_filename = os.path.basename(recent_image_file)
+    # Open, resize, and save the image to a BytesIO object
+    image = Image.open(recent_image_file)
+    image = image.resize((800, 600))  # resize to 800x600
+    byte_io = io.BytesIO()
+    image.save(byte_io, 'JPEG')
+    byte_io.seek(0)
 
-    # Send the most recent image file from its directory
-    return send_from_directory(image_directory, image_filename)
+    # Send the BytesIO object as a file
+    return send_file(byte_io, mimetype='image/jpeg')
 
 
 @app.route('/images/<site>/<date>/<time>')
@@ -127,7 +135,7 @@ def get_site_image_list_by_date(site):
     date_list = [os.path.basename(folder) for folder in folder_list]
 
     # Return the date list
-    return jsonify({site: date_list}), 200
+    return jsonify({"date": date_list}), 200
 
 
 @app.route('/images/<site>/<date>', methods=['GET'])
@@ -143,7 +151,7 @@ def get_site_image_list_in_date(site, date):
     image_list = [os.path.basename(file) for file in image_files]
 
     # Return the image list
-    return jsonify({date: image_list}), 200
+    return jsonify({"images": image_list}), 200
 
 
 if __name__ == '__main__':
