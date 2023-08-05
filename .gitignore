@@ -158,6 +158,9 @@ cython_debug/
 # static
 static/
 
+# images
+images/
+
 # samples
 sample1/
 sample2/

@@ -79,19 +79,21 @@ if __name__ == '__main__':
     scheduler.init_app(app)
     scheduler.start()
 
-    @scheduler.task('interval', id='do_job_1', seconds=10*60, misfire_grace_time=10)
-    def job1():
+    @scheduler.task('interval', id='making_thumbnails', seconds=int(os.getenv('THUMBNAIL_INTERVAL')), misfire_grace_time=10)
+    def making_thumbnails():
         # Generate today's date string
         today = datetime.now().strftime('%Y-%m-%d')
 
         # Get all subfolders in the static directory
-        subfolders = [f for f in glob.glob('static/*') if os.path.isdir(f)]
+        subfolders = [f for f in glob.glob(
+            f'{os.getenv("IMAGES")}/*') if os.path.isdir(f)]
 
         # Process all the folders
         for folder_path in subfolders:
             folder_name = os.path.basename(folder_path)
             # Try to find the folder for today's date
-            image_folder = os.path.join('static', folder_name, today)
+            image_folder = os.path.join(
+                os.getenv("IMAGES"), folder_name, today)
             print(image_folder)
             if not os.path.exists(image_folder):
                 # If the folder does not exist, create an empty thumbnail
