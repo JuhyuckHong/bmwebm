@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, jsonify, url_for
+from flask import Flask, request, jsonify, url_for, send_from_directory
 from flask_jwt_extended import JWTManager, jwt_required, create_access_token
 from flask_pymongo import PyMongo
 from datetime import timedelta, datetime
@@ -58,6 +58,12 @@ def get_thumbnails():
     thumbnail_urls = [url_for('static', filename=os.path.basename(file))
                       for file in thumbnail_files]
     return jsonify({'thumbnail_urls': thumbnail_urls}), 200
+
+
+@app.route('/image/<sitename>/<date>/<time>')
+@jwt_required()
+def protected_image(sitename, date, time):
+    return send_from_directory(os.path.join(os.getenv('IMAGES'), sitename, date), f'{date}_{time}.jpg')
 
 
 @app.route('/recent-image', methods=['GET'])
