@@ -2,6 +2,7 @@ import os
 from flask import Flask, request, jsonify, url_for, send_from_directory
 from flask_jwt_extended import JWTManager, jwt_required, create_access_token
 from flask_pymongo import PyMongo
+from flask_cors import CORS
 from datetime import timedelta, datetime
 from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -14,6 +15,10 @@ from PIL import Image
 load_dotenv()
 
 app = Flask(__name__)
+
+# CORS setting
+CORS(app, resources={r"/*": {"origins": "http://localhost:4000"}})
+
 
 app.config['MONGO_URI'] = os.getenv('MONGO_URI')
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY')
@@ -47,8 +52,8 @@ def login():
         {'username': data['username'], 'password': data['password']})
     if not user:
         return jsonify({'message': 'Invalid credentials'}), 400
-    access_token = create_access_token(identity=data['username'])
-    return jsonify({'access_token': access_token}), 200
+    access_token = create_access_token(identity={'username': data['username']})
+    return jsonify({'access_token': access_token, 'message': 'Login success.'}), 200
 
 
 @app.route('/thumbnails', methods=['GET'])
