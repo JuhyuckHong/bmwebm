@@ -17,7 +17,8 @@ load_dotenv()
 app = Flask(__name__)
 
 # CORS setting
-CORS(app, resources={r"/*": {"origins": "http://localhost:4000"}})
+CORS(app, resources={
+     r"/*": {"origins": [os.getenv('FRONT_DEV'), os.getenv('FRONT_PRD')]}})
 
 
 app.config['MONGO_URI'] = os.getenv('MONGO_URI')
@@ -53,7 +54,8 @@ def login():
     if not user:
         return jsonify({'message': 'Invalid credentials'}), 400
     access_token = create_access_token(identity={'username': data['username']})
-    return jsonify({'access_token': access_token, 'message': 'Login success.'}), 200
+    return jsonify({'access_token': access_token,
+                    'message': 'Login success.'}), 200
 
 
 @app.route('/auth', methods=['GET'])
@@ -74,7 +76,10 @@ def get_thumbnails():
 @app.route('/image/<site>/<date>/<time>')
 @jwt_required()
 def protected_image(site, date, time):
-    return send_from_directory(os.path.join(os.getenv('IMAGES'), site, date), f'{date}_{time}.jpg')
+    return send_from_directory(os.path.join(os.getenv('IMAGES'),
+                                            site,
+                                            date),
+                               f'{date}_{time}.jpg')
 
 
 @app.route('/recent-image', methods=['GET'])
@@ -96,7 +101,10 @@ if __name__ == '__main__':
     scheduler.init_app(app)
     scheduler.start()
 
-    @scheduler.task('interval', id='making_thumbnails', seconds=int(os.getenv('THUMBNAIL_INTERVAL')), misfire_grace_time=10)
+    @scheduler.task('interval',
+                    id='making_thumbnails',
+                    seconds=int(os.getenv('THUMBNAIL_INTERVAL')),
+                    misfire_grace_time=10)
     def making_thumbnails():
         # Generate today's date string
         today = datetime.now().strftime('%Y-%m-%d')
