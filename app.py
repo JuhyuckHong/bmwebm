@@ -73,6 +73,35 @@ def get_thumbnails():
     return jsonify({'thumbnail_urls': thumbnail_urls}), 200
 
 
+@app.route('/images/<site>/recent', methods=['GET'])
+@jwt_required()
+def recent_image(site):
+    # Define the path of the site
+    site_path = os.path.join(os.getenv("IMAGES"), site)
+
+    # Get the list of all date folders in the site
+    date_folders = glob.glob(os.path.join(site_path, '????-??-??'))
+
+    # Filter out items that are not directories
+    date_folders = [folder for folder in date_folders if os.path.isdir(folder)]
+
+    # Find the most recent date folder
+    recent_date_folder = max(date_folders, key=os.path.basename)
+
+    # Get the list of all image files in the recent date folder
+    image_files = glob.glob(os.path.join(recent_date_folder, '*.jpg'))
+
+    # Find the most recent image file based on the file name
+    recent_image_file = max(image_files, key=os.path.basename)
+
+    # Get the directory and the filename of the most recent image
+    image_directory = os.path.dirname(recent_image_file)
+    image_filename = os.path.basename(recent_image_file)
+
+    # Send the most recent image file from its directory
+    return send_from_directory(image_directory, image_filename)
+
+
 @app.route('/images/<site>/<date>/<time>')
 @jwt_required()
 def protected_image(site, date, time):
