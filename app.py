@@ -1,6 +1,6 @@
 import io
 import os
-from flask import Flask, request, jsonify, url_for, send_from_directory, send_file
+from flask import Flask, request, jsonify, url_for, send_from_directory, send_file, make_response
 from flask_jwt_extended import JWTManager, jwt_required, create_access_token
 from flask_pymongo import PyMongo
 from flask_cors import CORS
@@ -75,7 +75,14 @@ def get_thumbnails():
         thumbnail_url = url_for('static', filename=os.path.basename(file))
         thumbnail_dict = {'site': site, 'url': thumbnail_url}
         thumbnail_list.append(thumbnail_dict)
-    return jsonify({'thumbnail_urls': thumbnail_list}), 200
+
+    # 캐시 제어 헤더 설정
+    response = make_response(jsonify({'thumbnail_urls': thumbnail_list}), 200)
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+
+    return response
 
 
 @app.route('/images/<site>/recent', methods=['GET'])
@@ -101,7 +108,7 @@ def recent_image(site):
 
     # Open, resize, and save the image to a BytesIO object
     image = Image.open(recent_image_file)
-    image.thumbnail((800, 600))  # resize to 800x600
+    image.thumbnail((1200, 1000))
     byte_io = io.BytesIO()
     image.save(byte_io, 'JPEG')
     byte_io.seek(0)
@@ -192,7 +199,7 @@ if __name__ == '__main__':
 
             # Generate the thumbnail of the latest image
             with Image.open(latest_image_file) as img:
-                img.thumbnail((200, 200))
+                img.thumbnail((300, 300))
                 thumbnail_path = os.path.join(
                     'static', f'thumb_{folder_name}.jpg')
                 img.save(thumbnail_path)
