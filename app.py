@@ -101,7 +101,7 @@ def recent_image(site):
 
     # Open, resize, and save the image to a BytesIO object
     image = Image.open(recent_image_file)
-    image = image.resize((800, 600))  # resize to 800x600
+    image.thumbnail((800, 600))  # resize to 800x600
     byte_io = io.BytesIO()
     image.save(byte_io, 'JPEG')
     byte_io.seek(0)
@@ -180,7 +180,7 @@ if __name__ == '__main__':
             print(image_folder)
             if not os.path.exists(image_folder):
                 # If the folder does not exist, create an empty thumbnail
-                img = Image.new('RGB', (128, 128), color=(73, 109, 137))
+                img = Image.new('RGB', (200, 200), color=(73, 109, 137))
                 thumbnail_path = os.path.join(
                     'static', f'thumb_{folder_name}.jpg')
                 img.save(thumbnail_path)
@@ -192,7 +192,7 @@ if __name__ == '__main__':
 
             # Generate the thumbnail of the latest image
             with Image.open(latest_image_file) as img:
-                img.thumbnail((128, 128))
+                img.thumbnail((200, 200))
                 thumbnail_path = os.path.join(
                     'static', f'thumb_{folder_name}.jpg')
                 img.save(thumbnail_path)
