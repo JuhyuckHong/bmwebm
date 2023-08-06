@@ -30,6 +30,48 @@ app.config['SCHEDULER_API_ENABLED'] = True
 
 jwt = JWTManager(app)
 mongo = PyMongo(app)
+scheduler = APScheduler()
+scheduler.init_app(app)
+scheduler.start()
+
+
+@scheduler.task('interval',
+                id='making_thumbnails',
+                seconds=int(os.getenv('THUMBNAIL_INTERVAL')),
+                misfire_grace_time=10)
+def making_thumbnails():
+    # Generate today's date string
+    today = datetime.now().strftime('%Y-%m-%d')
+
+    # Get all subfolders in the static directory
+    subfolders = [f for f in glob.glob(
+        f'{os.getenv("IMAGES")}/*') if os.path.isdir(f)]
+
+    # Process all the folders
+    for folder_path in subfolders:
+        folder_name = os.path.basename(folder_path)
+        # Try to find the folder for today's date
+        image_folder = os.path.join(
+            os.getenv("IMAGES"), folder_name, today)
+        print(image_folder)
+        if not os.path.exists(image_folder):
+            # If the folder does not exist, create an empty thumbnail
+            img = Image.new('RGB', (300, 300), color=(73, 109, 137))
+            thumbnail_path = os.path.join(
+                'static', f'thumb_{folder_name}.jpg')
+            img.save(thumbnail_path)
+            continue
+
+        # If the folder exists, find the latest image file in the folder
+        image_files = glob.glob(os.path.join(image_folder, '*.jpg'))
+        latest_image_file = max(image_files)
+
+        # Generate the thumbnail of the latest image
+        with Image.open(latest_image_file) as img:
+            img.thumbnail((300, 300))
+            thumbnail_path = os.path.join(
+                'static', f'thumb_{folder_name}.jpg')
+            img.save(thumbnail_path)
 
 
 @app.route('/signup', methods=['POST'])
@@ -170,46 +212,5 @@ def get_site_image_list_in_date(site, date):
 
 
 if __name__ == '__main__':
-    scheduler = APScheduler()
-    scheduler.init_app(app)
-    scheduler.start()
-
-    @scheduler.task('interval',
-                    id='making_thumbnails',
-                    seconds=int(os.getenv('THUMBNAIL_INTERVAL')),
-                    misfire_grace_time=10)
-    def making_thumbnails():
-        # Generate today's date string
-        today = datetime.now().strftime('%Y-%m-%d')
-
-        # Get all subfolders in the static directory
-        subfolders = [f for f in glob.glob(
-            f'{os.getenv("IMAGES")}/*') if os.path.isdir(f)]
-
-        # Process all the folders
-        for folder_path in subfolders:
-            folder_name = os.path.basename(folder_path)
-            # Try to find the folder for today's date
-            image_folder = os.path.join(
-                os.getenv("IMAGES"), folder_name, today)
-            print(image_folder)
-            if not os.path.exists(image_folder):
-                # If the folder does not exist, create an empty thumbnail
-                img = Image.new('RGB', (200, 200), color=(73, 109, 137))
-                thumbnail_path = os.path.join(
-                    'static', f'thumb_{folder_name}.jpg')
-                img.save(thumbnail_path)
-                continue
-
-            # If the folder exists, find the latest image file in the folder
-            image_files = glob.glob(os.path.join(image_folder, '*.jpg'))
-            latest_image_file = max(image_files)
-
-            # Generate the thumbnail of the latest image
-            with Image.open(latest_image_file) as img:
-                img.thumbnail((300, 300))
-                thumbnail_path = os.path.join(
-                    'static', f'thumb_{folder_name}.jpg')
-                img.save(thumbnail_path)
 
     app.run('localhost', port=3000, debug=True, use_reloader=False)
