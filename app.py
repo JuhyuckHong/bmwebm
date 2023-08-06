@@ -117,13 +117,21 @@ def recent_image(site):
     return send_file(byte_io, mimetype='image/jpeg')
 
 
-@app.route('/images/<site>/<date>/<time>')
+@app.route('/images/<site>/<date>/<photo>')
 @jwt_required()
-def protected_image(site, date, time):
-    return send_from_directory(os.path.join(os.getenv('IMAGES'),
-                                            site,
-                                            date),
-                               f'{date}_{time}.jpg')
+def get_single_image(site, date, photo):
+    # Open, resize, and save the image to a BytesIO object
+    image = Image.open(os.path.join(os.getenv('IMAGES'),
+                                    site,
+                                    date,
+                                    f'{photo}.jpg'))
+    image.thumbnail((1200, 1000))
+    byte_io = io.BytesIO()
+    image.save(byte_io, 'JPEG')
+    byte_io.seek(0)
+
+    # Send the BytesIO object as a file
+    return send_file(byte_io, mimetype='image/jpeg')
 
 
 @app.route('/images/<site>', methods=['GET'])
@@ -142,7 +150,7 @@ def get_site_image_list_by_date(site):
     date_list = [os.path.basename(folder) for folder in folder_list]
 
     # Return the date list
-    return jsonify({"date": date_list}), 200
+    return jsonify(date_list), 200
 
 
 @app.route('/images/<site>/<date>', methods=['GET'])
@@ -158,7 +166,7 @@ def get_site_image_list_in_date(site, date):
     image_list = [os.path.basename(file) for file in image_files]
 
     # Return the image list
-    return jsonify({"images": image_list}), 200
+    return jsonify(image_list), 200
 
 
 if __name__ == '__main__':
