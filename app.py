@@ -74,12 +74,12 @@ def making_thumbnails():
         image_folder = os.path.join(
             os.getenv("IMAGES"), folder_name, today)
         if not os.path.exists(image_folder):
-            # If the folder does not exist, create an empty thumbnail
-            img = Image.new('RGB', (300, 200), color=(73, 109, 137))
-            thumbnail_path = os.path.join(
-                'static', f'thumb_{folder_name}.jpg')
-            img.save(thumbnail_path)
-            no_photo_yet_site.append(folder_name)
+            # If the folder does not exist, use no_image_today.jpg
+            with Image.open('static/no_image_today.jpg') as img:
+                thumbnail_path = os.path.join(
+                    'static', f'thumb_{folder_name}.jpg')
+                img.save(thumbnail_path)
+                no_photo_yet_site.append(folder_name)
             continue
 
         # If the folder exists, find the latest image file in the folder
