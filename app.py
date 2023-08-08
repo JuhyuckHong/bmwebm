@@ -47,6 +47,20 @@ def making_thumbnails():
     subfolders = [f for f in glob.glob(
         f'{os.getenv("IMAGES")}/*') if os.path.isdir(f)]
 
+    # Get a list of existing thumbnail files
+    existing_thumbnails = [f for f in glob.glob('static/thumb_*.jpg')]
+
+    # Remove thumbnails for subfolders that no longer exist
+    for existing_thumbnail in existing_thumbnails:
+        thumbnail_name = os.path.basename(existing_thumbnail)
+        site = os.path.splitext(thumbnail_name)[0].split('_')[1]
+        print(site)
+        site_folder_list = [os.path.basename(
+            subfolder) for subfolder in subfolders]
+        print(site_folder_list)
+        if site not in site_folder_list:
+            os.remove(existing_thumbnail)
+
     # Process all the folders
     for folder_path in subfolders:
         folder_name = os.path.basename(folder_path)
