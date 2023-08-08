@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
 import glob
 from flask_apscheduler import APScheduler
-import time
+import logging
 import glob
 from PIL import Image
 
@@ -17,6 +17,8 @@ load_dotenv()
 
 app = Flask(__name__)
 
+logging.basicConfig(filename='app.log', level=logging.DEBUG,
+                    format='%(asctime)s %(levelname)s: %(message)s')
 # CORS setting
 CORS(app, resources={
      r"/*": {"origins": [os.getenv('FRONT_DEV'), os.getenv('FRONT_PRD')]}})
@@ -50,16 +52,20 @@ def making_thumbnails():
     # Get a list of existing thumbnail files
     existing_thumbnails = [f for f in glob.glob('static/thumb_*.jpg')]
 
+    # Make report list
+    remove_site = []
+    no_photo_yet_site = []
+    thumbnail_made_site = []
+
     # Remove thumbnails for subfolders that no longer exist
     for existing_thumbnail in existing_thumbnails:
         thumbnail_name = os.path.basename(existing_thumbnail)
         site = os.path.splitext(thumbnail_name)[0].split('_')[1]
-        print(site)
         site_folder_list = [os.path.basename(
             subfolder) for subfolder in subfolders]
-        print(site_folder_list)
         if site not in site_folder_list:
             os.remove(existing_thumbnail)
+            remove_site.append(site)
 
     # Process all the folders
     for folder_path in subfolders:
@@ -67,13 +73,13 @@ def making_thumbnails():
         # Try to find the folder for today's date
         image_folder = os.path.join(
             os.getenv("IMAGES"), folder_name, today)
-        print(image_folder)
         if not os.path.exists(image_folder):
             # If the folder does not exist, create an empty thumbnail
             img = Image.new('RGB', (300, 200), color=(73, 109, 137))
             thumbnail_path = os.path.join(
                 'static', f'thumb_{folder_name}.jpg')
             img.save(thumbnail_path)
+            no_photo_yet_site.append(folder_name)
             continue
 
         # If the folder exists, find the latest image file in the folder
@@ -86,6 +92,11 @@ def making_thumbnails():
             thumbnail_path = os.path.join(
                 'static', f'thumb_{folder_name}.jpg')
             img.save(thumbnail_path)
+            thumbnail_made_site.append(folder_name)
+
+    app.logger.info(f'Sites removed: {remove_site}')
+    app.logger.info(f'Sites with no photos yet: {no_photo_yet_site}')
+    app.logger.info(f'Sites with thumbnails created: {thumbnail_made_site}')
 
 
 @app.route('/signup', methods=['POST'])
