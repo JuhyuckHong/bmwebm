@@ -56,7 +56,7 @@ def making_thumbnails():
         print(image_folder)
         if not os.path.exists(image_folder):
             # If the folder does not exist, create an empty thumbnail
-            img = Image.new('RGB', (300, 300), color=(73, 109, 137))
+            img = Image.new('RGB', (300, 200), color=(73, 109, 137))
             thumbnail_path = os.path.join(
                 'static', f'thumb_{folder_name}.jpg')
             img.save(thumbnail_path)
@@ -68,7 +68,7 @@ def making_thumbnails():
 
         # Generate the thumbnail of the latest image
         with Image.open(latest_image_file) as img:
-            img.thumbnail((300, 300))
+            img.thumbnail((300, 200))
             thumbnail_path = os.path.join(
                 'static', f'thumb_{folder_name}.jpg')
             img.save(thumbnail_path)
@@ -118,13 +118,7 @@ def get_thumbnails():
         thumbnail_dict = {'site': site, 'url': thumbnail_url}
         thumbnail_list.append(thumbnail_dict)
 
-    # 캐시 제어 헤더 설정
-    response = make_response(jsonify({'thumbnail_urls': thumbnail_list}), 200)
-    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-    response.headers['Pragma'] = 'no-cache'
-    response.headers['Expires'] = '0'
-
-    return response
+    return jsonify({'thumbnail_urls': thumbnail_list}), 200
 
 
 @app.route('/images/<site>/recent', methods=['GET'])
