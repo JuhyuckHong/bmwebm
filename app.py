@@ -283,7 +283,7 @@ def get_thumbnails():
         thumbnail_dict = {'site': site, 'url': thumbnail_url}
         thumbnail_list.append(thumbnail_dict)
 
-    return jsonify({'thumbnail_urls': thumbnail_list}), 200
+    return jsonify(thumbnail_list), 200
 
 
 # (Monitoring) Recent Images of a Site:
