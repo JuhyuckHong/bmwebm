@@ -17,8 +17,25 @@ load_dotenv()
 
 app = Flask(__name__)
 
-logging.basicConfig(filename='app.log', level=logging.DEBUG,
-                    format='%(asctime)s %(levelname)s: %(message)s')
+# debug log setting
+debug_log_handler = logging.FileHandler('debug.log')
+debug_log_handler.setLevel(logging.DEBUG)
+debug_log_format = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
+debug_log_handler.setFormatter(debug_log_format)
+
+# info log setting
+info_log_handler = logging.FileHandler('info.log')
+info_log_handler.setLevel(logging.INFO)
+info_log_format = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
+info_log_handler.setFormatter(info_log_format)
+
+# add logger handler to Flask application
+app.logger.addHandler(debug_log_handler)
+app.logger.addHandler(info_log_handler)
+
+# set log level to debug
+app.logger.setLevel(logging.DEBUG)
+
 # CORS setting
 CORS(app, resources={
      r"/*": {"origins": [os.getenv('FRONT_DEV'), os.getenv('FRONT_PRD')]}})
