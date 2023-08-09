@@ -152,7 +152,7 @@ def making_setting_json():
                 for line in f:
                     key, value = line.strip().split('=')
                     site_settings[key] = value.strip('""')
-            # Calculate Shooting Count
+            # Calculate Shooting Count of today
             start_minutes = int(
                 site_settings["time_start"][:2]) * 60 + int(site_settings["time_start"][2:])
             end_minutes = int(
@@ -160,6 +160,12 @@ def making_setting_json():
             interval_minutes = int(site_settings["time_interval"])
             site_settings["shooting_count"] = (
                 end_minutes - start_minutes) // interval_minutes + 1
+            # Calculate Shooting Count of current time
+            current_time = datetime.now()
+            current_minutes = min(current_time.hour *
+                                  60 + current_time.minute, end_minutes)
+            site_settings["shooting_count_till_now"] = (
+                current_minutes - start_minutes) // interval_minutes + 1
 
         if today in folders:
             # Counting Photo list of today
