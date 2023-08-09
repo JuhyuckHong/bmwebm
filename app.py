@@ -98,20 +98,21 @@ def making_thumbnails():
     app.logger.info(f'Sites with no photos yet: {no_photo_yet_site}')
     app.logger.info(f'Sites with thumbnails created: {thumbnail_made_site}')
 
+# auth - signup
+# @app.route('/signup', methods=['POST'])
+# def signup():
+#     data = request.get_json()
+#     if not data or 'username' not in data or 'password' not in data:
+#         return jsonify({'message': 'Invalid data'}), 400
+#     if mongo.db.users.find_one({'username': data['username']}):
+#         return jsonify({'message': 'User already exists'}), 400
+#     hashed_password = generate_password_hash(data['password'])
+#     mongo.db.users.insert_one(
+#         {'username': data['username'], 'password': hashed_password})
+#     return jsonify({'message': 'User created'}), 201
 
-@app.route('/signup', methods=['POST'])
-def signup():
-    data = request.get_json()
-    if not data or 'username' not in data or 'password' not in data:
-        return jsonify({'message': 'Invalid data'}), 400
-    if mongo.db.users.find_one({'username': data['username']}):
-        return jsonify({'message': 'User already exists'}), 400
-    hashed_password = generate_password_hash(data['password'])
-    mongo.db.users.insert_one(
-        {'username': data['username'], 'password': hashed_password})
-    return jsonify({'message': 'User created'}), 201
 
-
+# auth - login
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
@@ -125,6 +126,8 @@ def login():
     return jsonify({'access_token': access_token,
                     'message': 'Login success.'}), 200
 
+# auth - check
+
 
 @app.route('/auth', methods=['GET'])
 @jwt_required()
@@ -132,6 +135,7 @@ def auth():
     return jsonify({'message': 'OK'}), 200
 
 
+# (Monitoring) Thumbnails of Today's Photos from All Available Sites
 @app.route('/thumbnails', methods=['GET'])
 @jwt_required()
 def get_thumbnails():
@@ -146,6 +150,7 @@ def get_thumbnails():
     return jsonify({'thumbnail_urls': thumbnail_list}), 200
 
 
+# (Monitoring) Recent Images of a Site:
 @app.route('/images/<site>/recent', methods=['GET'])
 @jwt_required()
 def recent_image(site):
@@ -178,6 +183,7 @@ def recent_image(site):
     return send_file(byte_io, mimetype='image/jpeg')
 
 
+# (Monitoring) Selected Time-Specific Photo of the Site:
 @app.route('/images/<site>/<date>/<photo>')
 @jwt_required()
 def get_single_image(site, date, photo):
@@ -195,6 +201,7 @@ def get_single_image(site, date, photo):
     return send_file(byte_io, mimetype='image/jpeg')
 
 
+# (Monitoring) List of Date Folders:
 @app.route('/images/<site>', methods=['GET'])
 @jwt_required()
 def get_site_image_list_by_date(site):
@@ -214,6 +221,7 @@ def get_site_image_list_by_date(site):
     return jsonify(date_list), 200
 
 
+# (Monitoring) List of Photos by Date:
 @app.route('/images/<site>/<date>', methods=['GET'])
 @jwt_required()
 def get_site_image_list_in_date(site, date):
