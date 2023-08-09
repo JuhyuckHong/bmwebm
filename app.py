@@ -1,7 +1,7 @@
 import io
 import os
 from flask import Flask, request, jsonify, url_for, send_from_directory, send_file, make_response
-from flask_jwt_extended import JWTManager, jwt_required, create_access_token
+from flask_jwt_extended import JWTManager, jwt_required, create_access_token, get_jwt_identity
 from flask_pymongo import PyMongo
 from flask_cors import CORS
 from datetime import timedelta, datetime
@@ -115,18 +115,55 @@ def making_thumbnails():
     app.logger.info(f'Sites with no photos yet: {no_photo_yet_site}')
     app.logger.info(f'Sites with thumbnails created: {thumbnail_made_site}')
 
+
 # auth - signup
-# @app.route('/signup', methods=['POST'])
-# def signup():
-#     data = request.get_json()
-#     if not data or 'username' not in data or 'password' not in data:
-#         return jsonify({'message': 'Invalid data'}), 400
-#     if mongo.db.users.find_one({'username': data['username']}):
-#         return jsonify({'message': 'User already exists'}), 400
-#     hashed_password = generate_password_hash(data['password'])
-#     mongo.db.users.insert_one(
-#         {'username': data['username'], 'password': hashed_password})
-#     return jsonify({'message': 'User created'}), 201
+@app.route('/signup', methods=['POST'])
+def signup():
+    data = request.get_json()
+    print(data)
+    if not data or 'username' not in data or 'password' not in data:
+        return jsonify({'message': 'Invalid data'}), 400
+    if mongo.db.users.find_one({'username': data['username']}) or mongo.db.pending_users.find_one({'username': data['username']}):
+        return jsonify({'message': 'User already exists'}), 400
+    hashed_password = generate_password_hash(data['password'])
+    mongo.db.pending_users.insert_one(
+        {'username': data['username'], 'password': hashed_password, 'code': data['code']})
+    return jsonify({'message': 'User registered, awaiting approval'}), 201
+
+
+# auth - list of pending user
+@app.route('/users/pending', methods=['GET'])
+@jwt_required()
+def list_pending_users():
+    # admin check
+    identity = get_jwt_identity()
+    print(identity)
+    if identity["class"] == identity["username"]:
+        users = mongo.db.pending_users.find()
+    else:
+        users = []
+    # Making list of pending user
+    user_list = []
+    for user in users:
+        user_data = {
+            'username': user['username'],
+            'code': user['code']
+        }
+        user_list.append(user_data)
+
+    return jsonify({'pending_users': user_list}), 200
+
+
+# auth admin - approve user
+@app.route('/approve/<username>', methods=['PUT'])
+def approve_user(username):
+    user = mongo.db.pending_users.find_one({'username': username})
+    if not user:
+        return jsonify({'message': 'User not found in pending list'}), 404
+    user['class'] = 'user'
+    mongo.db.users.insert_one(user)
+    mongo.db.pending_users.delete_one({'username': username})
+    return jsonify({'message': f'User {username} approved and added to users'}), 200
 
 
 # auth - login
@@ -135,21 +172,20 @@ def login():
     data = request.get_json()
     if not data or 'username' not in data or 'password' not in data:
         return jsonify({'message': 'Invalid data'}), 400
-    user = mongo.db.users.find_one(
-        {'username': data['username'], 'password': data['password']})
-    if not user:
+    user = mongo.db.users.find_one({'username': data['username']})
+    if not user or not check_password_hash(user['password'], data['password']):
         return jsonify({'message': 'Invalid credentials'}), 400
-    access_token = create_access_token(identity={'username': data['username']})
-    return jsonify({'access_token': access_token,
-                    'message': 'Login success.'}), 200
+    access_token = create_access_token(
+        identity={'username': user['username'], 'class': user['class']})
+    return jsonify({'access_token': access_token, 'message': 'Login success.'}), 200
+
 
 # auth - check
-
-
 @app.route('/auth', methods=['GET'])
 @jwt_required()
 def auth():
-    return jsonify({'message': 'OK'}), 200
+    current_user_identity = get_jwt_identity()
+    return jsonify({'message': 'OK', 'identity': current_user_identity}), 200
 
 
 # (Monitoring) Thumbnails of Today's Photos from All Available Sites
