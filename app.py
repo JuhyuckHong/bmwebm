@@ -119,8 +119,8 @@ def making_thumbnails():
             img.save(thumbnail_path)
             thumbnail_made_site.append(folder_name)
 
-    app.logger.info(f'Sites removed: {remove_site}')
-    app.logger.info(f'Sites with no photos yet: {no_photo_yet_site}')
+    app.logger.info(f'Sites removed                : {remove_site}')
+    app.logger.info(f'Sites with no photos yet     : {no_photo_yet_site}')
     app.logger.info(f'Sites with thumbnails created: {thumbnail_made_site}')
 
 
@@ -134,12 +134,17 @@ def making_setting_json():
     # Generate today's date string
     today = datetime.now().strftime('%Y-%m-%d')
     sites = [f.path for f in os.scandir(os.getenv('IMAGES')) if f.is_dir()]
+    setting_missing_site = []
+    no_photos_today_site = []
+    created_setting_site = []
+
     for site in sites:
         site_settings = {}
         site_name = os.path.basename(site)
         folders = [os.path.basename(f.path)
                    for f in os.scandir(site) if f.is_dir()]
         if 'setting' not in folders:
+            setting_missing_site.append(site)
             continue
         else:
             file_path = os.path.join(site, 'setting', 'settings.txt')
@@ -161,9 +166,11 @@ def making_setting_json():
             photos = os.listdir(os.path.join(site, today))
             site_settings['photos_count'] = len(photos)
             site_settings['recent_photo'] = photos[-1]
+            created_setting_site.append(site)
         else:
             site_settings['photos_count'] = 0
             site_settings['recent_photo'] = "No Photo Available"
+            no_photos_today_site.append(site)
 
         settings[site_name] = site_settings
 
@@ -171,6 +178,13 @@ def making_setting_json():
     # Save Json into File
     with open('settings.json', 'w') as json_file:
         json_file.write(final_json)
+
+    app.logger.info(
+        f'Setting does not exist for the site  : {setting_missing_site}')
+    app.logger.info(
+        f'Site with no photos today            : {no_photos_today_site}')
+    app.logger.info(
+        f'Setting has been created for the site: {created_setting_site}')
 
 
 # auth - signup
