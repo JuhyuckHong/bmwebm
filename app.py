@@ -1,5 +1,6 @@
 import io
 import os
+import json
 from flask import Flask, request, jsonify, url_for, send_from_directory, send_file, make_response
 from flask_jwt_extended import JWTManager, jwt_required, create_access_token, get_jwt_identity
 from flask_pymongo import PyMongo
@@ -7,10 +8,9 @@ from flask_cors import CORS
 from datetime import timedelta, datetime
 from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
-import glob
+from glob import glob
 from flask_apscheduler import APScheduler
 import logging
-import glob
 from PIL import Image
 
 load_dotenv()
@@ -63,11 +63,11 @@ def making_thumbnails():
     today = datetime.now().strftime('%Y-%m-%d')
 
     # Get all subfolders in the static directory
-    subfolders = [f for f in glob.glob(
+    subfolders = [f for f in glob(
         f'{os.getenv("IMAGES")}/*') if os.path.isdir(f)]
 
     # Get a list of existing thumbnail files
-    existing_thumbnails = [f for f in glob.glob('static/thumb_*.jpg')]
+    existing_thumbnails = [f for f in glob('static/thumb_*.jpg')]
 
     # Make report list
     remove_site = []
@@ -87,6 +87,14 @@ def making_thumbnails():
     # Process all the folders
     for folder_path in subfolders:
         folder_name = os.path.basename(folder_path)
+
+        # Try to find the settings folder,
+        # If not found, skip.
+        setting_folder = os.path.join(
+            os.getenv("IMAGES"), folder_name, 'setting')
+        if not os.path.exists(setting_folder):
+            continue
+
         # Try to find the folder for today's date
         image_folder = os.path.join(
             os.getenv("IMAGES"), folder_name, today)
@@ -100,7 +108,7 @@ def making_thumbnails():
             continue
 
         # If the folder exists, find the latest image file in the folder
-        image_files = glob.glob(os.path.join(image_folder, '*.jpg'))
+        image_files = glob(os.path.join(image_folder, '*.jpg'))
         latest_image_file = max(image_files)
 
         # Generate the thumbnail of the latest image
@@ -114,6 +122,55 @@ def making_thumbnails():
     app.logger.info(f'Sites removed: {remove_site}')
     app.logger.info(f'Sites with no photos yet: {no_photo_yet_site}')
     app.logger.info(f'Sites with thumbnails created: {thumbnail_made_site}')
+
+
+@scheduler.task('interval',
+                id='making_setting_json',
+                seconds=int(os.getenv('SETTING_JSON_INTERVAL')),
+                misfire_grace_time=10)
+def making_setting_json():
+    # Save Settings for each site
+    settings = {}
+    # Generate today's date string
+    today = datetime.now().strftime('%Y-%m-%d')
+    sites = [f.path for f in os.scandir(os.getenv('IMAGES')) if f.is_dir()]
+    for site in sites:
+        site_settings = {}
+        site_name = os.path.basename(site)
+        folders = [os.path.basename(f.path)
+                   for f in os.scandir(site) if f.is_dir()]
+        if 'setting' not in folders:
+            continue
+        else:
+            file_path = os.path.join(site, 'setting', 'settings.txt')
+            with open(file_path, 'r') as f:
+                for line in f:
+                    key, value = line.strip().split('=')
+                    site_settings[key] = value.strip('""')
+            # Calculate Shooting Count
+            start_minutes = int(
+                site_settings["time_start"][:2]) * 60 + int(site_settings["time_start"][2:])
+            end_minutes = int(
+                site_settings["time_end"][:2]) * 60 + int(site_settings["time_end"][2:])
+            interval_minutes = int(site_settings["time_interval"])
+            site_settings["shooting_count"] = (
+                end_minutes - start_minutes) // interval_minutes + 1
+
+        if today in folders:
+            # Counting Photo list of today
+            photos = os.listdir(os.path.join(site, today))
+            site_settings['photos_count'] = len(photos)
+            site_settings['recent_photo'] = photos[-1]
+        else:
+            site_settings['photos_count'] = 0
+            site_settings['recent_photo'] = "No Photo Available"
+
+        settings[site_name] = site_settings
+
+    final_json = json.dumps(settings, indent=4)
+    # Save Json into File
+    with open('settings.json', 'w') as json_file:
+        json_file.write(final_json)
 
 
 # auth - signup
@@ -188,11 +245,37 @@ def auth():
     return jsonify({'message': 'OK', 'identity': current_user_identity}), 200
 
 
+# Load settings from settings.json
+def load_settings():
+    with open('settings.json', 'r') as f:
+        settings = json.load(f)
+    return settings
+
+
+# (Monitoring) Information of all sites
+@app.route('/information/all', methods=['GET'])
+@jwt_required()
+def get_all_information():
+    settings = load_settings()
+    return jsonify(settings)
+
+
+# (Monitoring) Information of the site
+@app.route('/information/<site>', methods=['GET'])
+@jwt_required()
+def get_site_information(site):
+    settings = load_settings()
+    if site in settings:
+        return jsonify(settings[site])
+    else:
+        return jsonify({"message": f"Site '{site}' not found"}), 404
+
+
 # (Monitoring) Thumbnails of Today's Photos from All Available Sites
 @app.route('/thumbnails', methods=['GET'])
 @jwt_required()
 def get_thumbnails():
-    thumbnail_files = glob.glob('static/thumb_*.jpg')
+    thumbnail_files = glob('static/thumb_*.jpg')
     thumbnail_list = list()
     for file in thumbnail_files:
         site = os.path.basename(file).replace('thumb_', '').replace('.jpg', '')
@@ -211,7 +294,7 @@ def recent_image(site):
     site_path = os.path.join(os.getenv("IMAGES"), site)
 
     # Get the list of all date folders in the site
-    date_folders = glob.glob(os.path.join(site_path, '????-??-??'))
+    date_folders = glob(os.path.join(site_path, '????-??-??'))
 
     # Filter out items that are not directories
     date_folders = [folder for folder in date_folders if os.path.isdir(folder)]
@@ -220,7 +303,7 @@ def recent_image(site):
     recent_date_folder = max(date_folders, key=os.path.basename)
 
     # Get the list of all image files in the recent date folder
-    image_files = glob.glob(os.path.join(recent_date_folder, '*.jpg'))
+    image_files = glob(os.path.join(recent_date_folder, '*.jpg'))
 
     # Find the most recent image file based on the file name
     recent_image_file = max(image_files, key=os.path.basename)
@@ -262,7 +345,7 @@ def get_site_image_list_by_date(site):
     site_path = os.path.join(os.getenv("IMAGES"), site)
 
     # Get the list of folders in the site
-    folder_list = glob.glob(os.path.join(site_path, '????-??-??'))
+    folder_list = glob(os.path.join(site_path, '????-??-??'))
 
     # Filter out items that are not directories
     folder_list = [folder for folder in folder_list if os.path.isdir(folder)]
@@ -282,7 +365,7 @@ def get_site_image_list_in_date(site, date):
     date_path = os.path.join(os.getenv("IMAGES"), site, date)
 
     # Get the list of image files in the date folder
-    image_files = glob.glob(os.path.join(date_path, '*.jpg'))
+    image_files = glob(os.path.join(date_path, '*.jpg'))
 
     # Extract the filename from each image file
     image_list = [os.path.basename(file) for file in image_files]
