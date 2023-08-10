@@ -244,6 +244,16 @@ def approve_user(username):
     return jsonify({'message': f'User {username} approved and added to users'}), 200
 
 
+# auth admin - decline user
+@app.route('/decline/<username>', methods=['PUT'])
+def approve_user(username):
+    user = mongo.db.pending_users.find_one({'username': username})
+    if not user:
+        return jsonify({'message': 'User not found in pending list'}), 404
+    mongo.db.pending_users.delete_one({'username': username})
+    return jsonify({'message': f'User {username} declined'}), 200
+
+
 # auth - login
 @app.route('/login', methods=['POST'])
 def login():
