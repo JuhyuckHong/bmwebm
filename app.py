@@ -2,7 +2,7 @@ import io
 import os
 import json
 from flask import Flask, request, jsonify, url_for, send_from_directory, send_file, make_response
-from flask_jwt_extended import JWTManager, jwt_required, create_access_token, get_jwt_identity
+from flask_jwt_extended import JWTManager, jwt_required, create_access_token, get_jwt_identity, verify_jwt_in_request
 from flask_pymongo import PyMongo
 from flask_cors import CORS
 from datetime import timedelta, datetime
@@ -198,7 +198,6 @@ def making_setting_json():
 @app.route('/signup', methods=['POST'])
 def signup():
     data = request.get_json()
-    print(data)
     if not data or 'username' not in data or 'password' not in data:
         return jsonify({'message': 'Invalid data'}), 400
     if mongo.db.users.find_one({'username': data['username']}) or mongo.db.pending_users.find_one({'username': data['username']}):
@@ -215,7 +214,6 @@ def signup():
 def list_pending_users():
     # admin check
     identity = get_jwt_identity()
-    print(identity)
     if identity["class"] == identity["username"]:
         users = mongo.db.pending_users.find()
     else:
@@ -300,12 +298,22 @@ def heartbeat():
     return jsonify({'message': 'Heartbeat received successfully'}), 200
 
 
-# (Monitoring) Information of all sites
+def user_auth_sites(username):
+    data = mongo.db.users.find_one({'username': username})
+    print(data)
+    return ['sample3']
+
+
+# (Monitoring) Information of all available sites
 @app.route('/information/all', methods=['GET'])
 @jwt_required()
 def get_all_information():
     settings = load_settings()
-    return jsonify(settings)
+    # check user authorization
+    auth_sites = user_auth_sites(get_jwt_identity().get('username'))
+    auth_settings = {key: settings[key]
+                     for key in settings.keys() if key in auth_sites}
+    return jsonify(auth_settings)
 
 
 # (Monitoring) Information of the site
@@ -313,7 +321,9 @@ def get_all_information():
 @jwt_required()
 def get_site_information(site):
     settings = load_settings()
-    if site in settings:
+    # check user authorization
+    auth_sites = user_auth_sites(get_jwt_identity().get('username'))
+    if site in settings and site in auth_sites:
         return jsonify(settings[site])
     else:
         return jsonify({"message": f"Site '{site}' not found"}), 404
@@ -323,15 +333,39 @@ def get_site_information(site):
 @app.route('/thumbnails', methods=['GET'])
 @jwt_required()
 def get_thumbnails():
+    # check user authorization
+    auth_sites = user_auth_sites(get_jwt_identity().get('username'))
     thumbnail_files = glob('static/thumb_*.jpg')
     thumbnail_list = list()
     for file in thumbnail_files:
         site = os.path.basename(file).replace('thumb_', '').replace('.jpg', '')
-        thumbnail_url = url_for('static', filename=os.path.basename(file))
-        thumbnail_dict = {'site': site, 'url': thumbnail_url}
-        thumbnail_list.append(thumbnail_dict)
+        if site in auth_sites:
+            thumbnail_url = os.path.basename(file)
+            thumbnail_dict = {'site': site, 'url': thumbnail_url}
+            thumbnail_list.append(thumbnail_dict)
 
     return jsonify(thumbnail_list), 200
+
+
+# (Monitoring) Static Image Authorization Check
+@app.route('/static/<file>', methods=['GET'])
+def get_thumbnail_image(file):
+    if "thumb_" not in file:
+        return send_from_directory('static', file)
+
+    token = request.headers.get('Authorization')
+    thumbnail_files = [os.path.basename(filename)
+                       for filename in glob('static/thumb_*.jpg')]
+
+    if token and file in thumbnail_files:
+        _, identity = verify_jwt_in_request()
+        auth_sites = user_auth_sites(identity.get('sub').get('username'))
+        if file.replace('thumb_', '').split('.')[0] in auth_sites:
+            return send_from_directory('static', file)
+        else:
+            return jsonify({"message": "Access denied."}), 403
+    else:
+        return jsonify({"message": "Access denied."}), 403
 
 
 # (Monitoring) Recent Images of a Site:
