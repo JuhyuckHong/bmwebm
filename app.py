@@ -9,7 +9,7 @@ from datetime import timedelta, datetime
 from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
 from glob import glob
-from flask_apscheduler import APScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 import logging
 from PIL import Image
 
@@ -49,15 +49,15 @@ app.config['SCHEDULER_API_ENABLED'] = True
 
 jwt = JWTManager(app)
 mongo = PyMongo(app)
-scheduler = APScheduler()
-scheduler.init_app(app)
+scheduler = BackgroundScheduler()
 scheduler.start()
 
 
-@scheduler.task('interval',
-                id='making_thumbnails',
-                seconds=int(os.getenv('THUMBNAIL_INTERVAL')),
-                misfire_grace_time=10)
+@scheduler.scheduled_job('interval',
+                         id='making_thumbnails',
+                         seconds=int(os.getenv('THUMBNAIL_INTERVAL')),
+                         misfire_grace_time=10,
+                         max_instances=1)
 def making_thumbnails():
     # Generate today's date string
     today = datetime.now().strftime('%Y-%m-%d')
@@ -124,10 +124,11 @@ def making_thumbnails():
     app.logger.info(f'Sites with thumbnails created: {thumbnail_made_site}')
 
 
-@scheduler.task('interval',
-                id='making_setting_json',
-                seconds=int(os.getenv('SETTING_JSON_INTERVAL')),
-                misfire_grace_time=10)
+@scheduler.scheduled_job('interval',
+                         id='making_setting_json',
+                         seconds=int(os.getenv('SETTING_JSON_INTERVAL')),
+                         misfire_grace_time=10,
+                         max_instances=1)
 def making_setting_json():
     # Save Settings for each site
     settings = {}
@@ -270,6 +271,23 @@ def load_settings():
     with open('settings.json', 'r') as f:
         settings = json.load(f)
     return settings
+
+
+# (Monitoring) Heartbeat check
+@app.route('/heartbeat', methods=['POST'])
+def heartbeat():
+    # Retrieve JSON data from the request.
+    data = request.get_json()
+
+    # Validate the data
+    if not data:
+        return jsonify({'message': 'Invalid data'}), 400
+
+    app.logger.info(
+        f"Heartbeat Data - Temperature: {data.get('temperature')}, Disk Usage: {data.get('disk_usage')}, Hostname: {data.get('hostname')}, Camera Status: {data.get('camera_status')}")
+
+    # Return a success response.
+    return jsonify({'message': 'Heartbeat received successfully'}), 200
 
 
 # (Monitoring) Information of all sites
