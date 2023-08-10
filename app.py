@@ -55,7 +55,7 @@ scheduler.start()
 
 @scheduler.scheduled_job('interval',
                          id='making_thumbnails',
-                         seconds=int(os.getenv('THUMBNAIL_INTERVAL')),
+                         minutes=int(os.getenv('THUMBNAIL_INTERVAL')),
                          misfire_grace_time=10,
                          max_instances=1)
 def making_thumbnails():
@@ -126,7 +126,7 @@ def making_thumbnails():
 
 @scheduler.scheduled_job('interval',
                          id='making_setting_json',
-                         seconds=int(os.getenv('SETTING_JSON_INTERVAL')),
+                         minutes=int(os.getenv('SETTING_JSON_INTERVAL')),
                          misfire_grace_time=10,
                          max_instances=1)
 def making_setting_json():
@@ -194,6 +194,19 @@ def making_setting_json():
         f'Setting has been created for the site: {created_setting_site}')
 
 
+# Load settings from settings.json
+def load_settings():
+    with open('settings.json', 'r') as f:
+        settings = json.load(f)
+    return settings
+
+
+def user_auth_sites(username):
+    data = mongo.db.users.find_one(
+        {'username': username}, {"sites": 1, "_id": 0})
+    return data.get("sites")
+
+
 # auth - signup
 @app.route('/signup', methods=['POST'])
 def signup():
@@ -237,6 +250,7 @@ def approve_user(username):
     if not user:
         return jsonify({'message': 'User not found in pending list'}), 404
     user['class'] = 'user'
+    user['sites'] = []
     mongo.db.users.insert_one(user)
     mongo.db.pending_users.delete_one({'username': username})
     return jsonify({'message': f'User {username} approved and added to users'}), 200
@@ -274,11 +288,38 @@ def auth():
     return jsonify({'message': 'OK', 'identity': current_user_identity}), 200
 
 
-# Load settings from settings.json
-def load_settings():
-    with open('settings.json', 'r') as f:
-        settings = json.load(f)
-    return settings
+# auth - view all user information
+@app.route('/users', methods=['GET'])
+@jwt_required()
+def get_all_users():
+    # _id 필드는 제외하고 결과를 가져옵니다.
+    users = list(mongo.db.users.find({}, {'_id': False, 'password': False}))
+    return jsonify(users)
+
+
+# auth - update user view auth list
+@app.route('/user/<username>/update', methods=['PUT'])
+@jwt_required()
+def update_user_sites(username):
+    new_sites = request.json.get('sites', [])
+    # remove duplicated sites
+    new_sites = list(set(new_sites))
+
+    # username을 기반으로 사용자의 site 권한을 업데이트합니다.
+    result = mongo.db.users.update_one(
+        {'username': username}, {'$set': {'sites': new_sites}})
+
+    if result.matched_count == 0:
+        return jsonify({'message': 'User not found'}), 404
+    return jsonify({'message': 'Updated successfully'}), 200
+
+
+# auth/monitor - return all current service site name list
+@app.route('/sites/all', methods=['GET'])
+@jwt_required()
+def all_sites_name_list():
+    settings = load_settings()
+    return jsonify(list(settings.keys())), 200
 
 
 # (Monitoring) Heartbeat check
@@ -296,12 +337,6 @@ def heartbeat():
 
     # Return a success response.
     return jsonify({'message': 'Heartbeat received successfully'}), 200
-
-
-def user_auth_sites(username):
-    data = mongo.db.users.find_one({'username': username})
-    print(data)
-    return ['sample3']
 
 
 # (Monitoring) Information of all available sites
