@@ -246,7 +246,7 @@ def approve_user(username):
 
 # auth admin - decline user
 @app.route('/decline/<username>', methods=['PUT'])
-def approve_user(username):
+def decline_user(username):
     user = mongo.db.pending_users.find_one({'username': username})
     if not user:
         return jsonify({'message': 'User not found in pending list'}), 404
