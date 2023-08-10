@@ -145,7 +145,7 @@ def making_setting_json():
         folders = [os.path.basename(f.path)
                    for f in os.scandir(site) if f.is_dir()]
         if 'setting' not in folders:
-            setting_missing_site.append(site)
+            setting_missing_site.append(site.replace('images/', ' '))
             continue
         else:
             file_path = os.path.join(site, 'setting', 'settings.txt')
@@ -173,11 +173,11 @@ def making_setting_json():
             photos = os.listdir(os.path.join(site, today))
             site_settings['photos_count'] = len(photos)
             site_settings['recent_photo'] = photos[-1]
-            created_setting_site.append(site)
+            created_setting_site.append(site.replace('images/', ' '))
         else:
             site_settings['photos_count'] = 0
             site_settings['recent_photo'] = "No Photo Available"
-            no_photos_today_site.append(site)
+            no_photos_today_site.append(site.replace('images/', ' '))
 
         settings[site_name] = site_settings
 
