@@ -1,7 +1,7 @@
 import io
 import os
 import json
-from flask import Flask, request, jsonify, url_for, send_from_directory, send_file, make_response
+from flask import Flask, request, jsonify, Response, send_from_directory, send_file, stream_with_context
 from flask_jwt_extended import JWTManager, jwt_required, create_access_token, get_jwt_identity, verify_jwt_in_request
 from flask_pymongo import PyMongo
 from flask_cors import CORS
@@ -452,6 +452,35 @@ def get_single_image(site, date, photo):
 
     # Send the BytesIO object as a file
     return send_file(byte_io, mimetype='image/jpeg')
+
+
+# (Monitoring) Video list of Selected Site:
+@app.route('/video/<site>')
+@jwt_required()
+def get_daily_video_list(site):
+    # Find video list
+    try:
+        video_list = os.listdir(os.path.join('images', site, 'daily'))
+    except Exception as e:
+        return jsonify([]), 200
+    # Send video list
+    return jsonify(video_list), 200
+
+
+# (Monitoring) Video of Selected Date:
+@app.route('/video/<site>/<video>')
+@jwt_required()
+def get_daily_video(site, video):
+    # Make file name and check file exist
+    video = os.path.join(os.getenv('IMAGES'),
+                         site,
+                         'daily',
+                         video)
+    if not os.path.exists(video):
+        return jsonify({"message": "daily video not found"}), 404
+
+    # Send video by blob
+    return send_file(video, mimetype='video/mp4', as_attachment=False)
 
 
 # (Monitoring) List of Date Folders:
