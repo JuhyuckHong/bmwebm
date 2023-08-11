@@ -58,7 +58,7 @@ scheduler.start()
                          hour='7-23',
                          minute='*/10',
                          misfire_grace_time=10,
-                         max_instances=1)
+                         max_instances=3)
 def making_thumbnails():
     # Generate today's date string
     today = datetime.now().strftime('%Y-%m-%d')
@@ -130,7 +130,7 @@ def making_thumbnails():
                          hour='7-23',
                          minute='*/10',
                          misfire_grace_time=10,
-                         max_instances=1)
+                         max_instances=3)
 def making_setting_json():
     # Save Settings for each site
     settings = {}
