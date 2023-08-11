@@ -57,7 +57,6 @@ scheduler.start()
                          id='making_thumbnails',
                          hour='7-23',
                          minute='*/10',
-                         minutes=int(os.getenv('THUMBNAIL_INTERVAL')),
                          misfire_grace_time=10,
                          max_instances=1)
 def making_thumbnails():
@@ -130,7 +129,6 @@ def making_thumbnails():
                          id='making_setting_json',
                          hour='7-23',
                          minute='*/10',
-                         minutes=int(os.getenv('SETTING_JSON_INTERVAL')),
                          misfire_grace_time=10,
                          max_instances=1)
 def making_setting_json():
