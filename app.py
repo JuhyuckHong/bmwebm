@@ -53,8 +53,10 @@ scheduler = BackgroundScheduler()
 scheduler.start()
 
 
-@scheduler.scheduled_job('interval',
+@scheduler.scheduled_job('cron',
                          id='making_thumbnails',
+                         hour='7-23',
+                         minute='*/10',
                          minutes=int(os.getenv('THUMBNAIL_INTERVAL')),
                          misfire_grace_time=10,
                          max_instances=1)
@@ -124,8 +126,10 @@ def making_thumbnails():
     app.logger.info(f'Sites with thumbnails created: {thumbnail_made_site}')
 
 
-@scheduler.scheduled_job('interval',
+@scheduler.scheduled_job('cront',
                          id='making_setting_json',
+                         hour='7-23',
+                         minute='*/10',
                          minutes=int(os.getenv('SETTING_JSON_INTERVAL')),
                          misfire_grace_time=10,
                          max_instances=1)
