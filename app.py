@@ -125,7 +125,7 @@ def making_thumbnails():
     app.logger.info(f'Sites with thumbnails created: {thumbnail_made_site}')
 
 
-@scheduler.scheduled_job('cront',
+@scheduler.scheduled_job('cron',
                          id='making_setting_json',
                          hour='7-23',
                          minute='*/10',
