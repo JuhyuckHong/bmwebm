@@ -1,6 +1,7 @@
 import io
 import os
 import json
+import subprocess
 from flask import Flask, request, jsonify, Response, send_from_directory, send_file, stream_with_context
 from flask_jwt_extended import JWTManager, jwt_required, create_access_token, get_jwt_identity, verify_jwt_in_request
 from flask_pymongo import PyMongo
@@ -183,10 +184,24 @@ def making_setting_json():
 
         settings[site_name] = site_settings
 
-    final_json = json.dumps(settings, indent=4)
+    # Check ssh connection
+    command = ["ssh", os.getenv("SSH_HOST"), '-p',
+               os.getenv("SSH_PORT"), os.getenv("SSH_COMMAND")]
+    result = subprocess.run(
+        command, capture_output=True, text=True, check=True).stdout
+    result = [int(site.split('127.0.0.1:')[1].split(' ')[0].replace('22', ''))
+              for site in result.split('\n')[:-1]]
+
+    for site_name, setting in settings.items():
+        if int(setting['device_number'].replace('bmotion', '')) in result:
+            settings[site_name]['ssh'] = True
+        else:
+            settings[site_name]['ssh'] = False
+
+    settings_json = json.dumps(settings, indent=4)
     # Save Json into File
     with open('settings.json', 'w') as json_file:
-        json_file.write(final_json)
+        json_file.write(settings_json)
 
     app.logger.info(
         f'Setting does not exist for the site  : {setting_missing_site}')
@@ -333,9 +348,6 @@ def heartbeat():
     # Validate the data
     if not data:
         return jsonify({'message': 'Invalid data'}), 400
-
-    app.logger.info(
-        f"Heartbeat Data - Temperature: {data.get('temperature')}, Disk Usage: {data.get('disk_usage')}, Hostname: {data.get('hostname')}, Camera Status: {data.get('camera_status')}")
 
     # Return a success response.
     return jsonify({'message': 'Heartbeat received successfully'}), 200
