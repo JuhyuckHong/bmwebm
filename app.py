@@ -192,9 +192,9 @@ def making_setting_json():
     result = [int(site.split('127.0.0.1:')[1].split(' ')[0].replace('22', ''))
               for site in result.split('\n')[:-1]]
 
-    # Get monitor image
-    command_img = ["scp", "-P", os.getenv("SSH_PORT"), os.getenv(
-        "SSH_HOST")+":~/buildmotion_monitor/monitor.jpg", "./"]
+    # Get monitor image from server
+    command_img = ["scp", "-P", os.getenv("SSH_PORT"),
+                   os.getenv("SSH_HOST")+os.getenv("SCP_COMMAND"), "./static/"]
     subprocess.run(command_img, text=True, check=True)
 
     for site_name, setting in settings.items():
