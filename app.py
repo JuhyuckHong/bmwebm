@@ -307,7 +307,9 @@ def login():
 @jwt_required()
 def auth():
     current_user_identity = get_jwt_identity()
-    return jsonify({'message': 'OK', 'identity': current_user_identity}), 200
+    user = mongo.db.users.find_one({'username': current_user_identity.get('username')},
+                                   {'_id': False, 'password': False})
+    return jsonify({'message': 'OK', 'user': user}), 200
 
 
 # auth - view all user information
