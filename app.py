@@ -541,6 +541,11 @@ def get_site_image_list_in_date(site, date):
     return jsonify(image_list), 200
 
 
+@app.route('/', methods=['GET'])
+def hi():
+    return jsonify('hi'), 200
+
+
 if __name__ == '__main__':
 
     app.run('localhost', port=3000, debug=True, use_reloader=False)
