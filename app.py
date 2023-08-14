@@ -2,7 +2,7 @@ import io
 import os
 import json
 import subprocess
-from flask import Flask, request, jsonify, Response, send_from_directory, send_file, stream_with_context
+from flask import Flask, request, jsonify, Response, send_from_directory, send_file
 from flask_jwt_extended import JWTManager, jwt_required, create_access_token, get_jwt_identity, verify_jwt_in_request
 from flask_pymongo import PyMongo
 from flask_cors import CORS
@@ -247,12 +247,12 @@ def signup():
 @app.route('/users/pending', methods=['GET'])
 @jwt_required()
 def list_pending_users():
-    # admin check
-    identity = get_jwt_identity()
-    if identity["class"] == identity["username"]:
-        users = mongo.db.pending_users.find()
-    else:
-        users = []
+    # admin 유저 권한 확인
+    current_user_identity = get_jwt_identity()
+    if (current_user_identity.get("username") != current_user_identity.get("class")):
+        return jsonify({'message': 'Not authorized'}), 403
+
+    users = mongo.db.pending_users.find()
     # Making list of pending user
     user_list = []
     for user in users:
@@ -267,12 +267,19 @@ def list_pending_users():
 
 # auth admin - approve user
 @app.route('/approve/<username>', methods=['PUT'])
+@jwt_required()
 def approve_user(username):
+    # admin 유저 권한 확인
+    current_user_identity = get_jwt_identity()
+    if (current_user_identity.get("username") != current_user_identity.get("class")):
+        return jsonify({'message': 'Not authorized'}), 403
+
     user = mongo.db.pending_users.find_one({'username': username})
     if not user:
         return jsonify({'message': 'User not found in pending list'}), 404
     user['class'] = 'user'
     user['sites'] = []
+    user['activate'] = True
     mongo.db.users.insert_one(user)
     mongo.db.pending_users.delete_one({'username': username})
     return jsonify({'message': f'User {username} approved and added to users'}), 200
@@ -280,7 +287,13 @@ def approve_user(username):
 
 # auth admin - decline user
 @app.route('/decline/<username>', methods=['PUT'])
+@jwt_required()
 def decline_user(username):
+    # admin 유저 권한 확인
+    current_user_identity = get_jwt_identity()
+    if (current_user_identity.get("username") != current_user_identity.get("class")):
+        return jsonify({'message': 'Not authorized'}), 403
+
     user = mongo.db.pending_users.find_one({'username': username})
     if not user:
         return jsonify({'message': 'User not found in pending list'}), 404
@@ -316,8 +329,14 @@ def auth():
 @app.route('/users', methods=['GET'])
 @jwt_required()
 def get_all_users():
+    # admin 유저 권한 확인
+    current_user_identity = get_jwt_identity()
+    if (current_user_identity.get("username") != current_user_identity.get("class")):
+        return jsonify({'message': 'Not authorized'}), 403
+
     # _id 필드는 제외하고 결과를 가져옵니다.
-    users = list(mongo.db.users.find({}, {'_id': False, 'password': False}))
+    users = list(mongo.db.users.find(
+        {'activate': {'$ne': False}}, {'_id': False, 'password': False}))
     return jsonify(users)
 
 
@@ -336,6 +355,54 @@ def update_user_sites(username):
     if result.matched_count == 0:
         return jsonify({'message': 'User not found'}), 404
     return jsonify({'message': 'Updated successfully'}), 200
+
+
+# auth - users deactivate/activate
+@app.route('/users/deactivate', methods=['PUT'])
+@jwt_required()
+def deactivate_users():
+    # admin 유저 권한 확인
+    current_user_identity = get_jwt_identity()
+    if (current_user_identity.get("username") != current_user_identity.get("class")):
+        return jsonify({'message': 'Not authorized'}), 403
+    # 요청 본문에서 사용자 이름의 리스트를 가져옵니다.
+    usernames = request.json.get('usernames', [])
+
+    # $in 연산자를 사용하여 여러 사용자의 activate 상태를 false로 설정합니다.
+    deactivate_result = mongo.db.users.update_many(
+        {'username': {'$in': usernames}},
+        {'$set': {'activate': False}}
+    )
+
+    # $nin 연산자를 사용하여 목록에 포함되지 않은 사용자들의 activate 상태를 true로 설정합니다.
+    activate_result = mongo.db.users.update_many(
+        {'username': {'$nin': usernames}},
+        {'$set': {'activate': True}}
+    )
+
+    if deactivate_result.modified_count == 0 and activate_result.modified_count == 0:
+        return jsonify({'message': 'No changes were made'}), 404
+
+    return jsonify({
+        'message': f'{deactivate_result.modified_count} users deactivated and {activate_result.modified_count} users activated'
+    }), 200
+
+
+# auth - delete user
+@app.route('/user/<username>', methods=['DELETE'])
+@jwt_required()
+def delete_user(username):
+    # admin 유저 권한 확인
+    current_user_identity = get_jwt_identity()
+    if (current_user_identity.get("username") != current_user_identity.get("class")):
+        return jsonify({'message': 'Not authorized'}), 403
+
+    result = mongo.db.users.delete_one({'username': username})
+
+    if result.deleted_count == 0:
+        return jsonify({'message': 'User not found'}), 404
+
+    return jsonify({'message': 'User successfully deleted'})
 
 
 # auth/monitor - return all current service site name list
