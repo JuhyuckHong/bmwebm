@@ -336,7 +336,7 @@ def get_all_users():
 
     # _id 필드는 제외하고 결과를 가져옵니다.
     users = list(mongo.db.users.find(
-        {'activate': {'$ne': False}}, {'_id': False, 'password': False}))
+        {}, {'_id': False, 'password': False}))
     return jsonify(users)
 
 
@@ -357,35 +357,40 @@ def update_user_sites(username):
     return jsonify({'message': 'Updated successfully'}), 200
 
 
-# auth - users deactivate/activate
-@app.route('/users/deactivate', methods=['PUT'])
+# auth - users activate
+@app.route('/user/<username>/activate', methods=['PUT'])
 @jwt_required()
-def deactivate_users():
+def activate_users(username):
     # admin 유저 권한 확인
-    current_user_identity = get_jwt_identity()
-    if (current_user_identity.get("username") != current_user_identity.get("class")):
+    identity = get_jwt_identity()
+    if (identity.get("username") != identity.get("class")):
         return jsonify({'message': 'Not authorized'}), 403
-    # 요청 본문에서 사용자 이름의 리스트를 가져옵니다.
-    usernames = request.json.get('usernames', [])
 
-    # $in 연산자를 사용하여 여러 사용자의 activate 상태를 false로 설정합니다.
-    deactivate_result = mongo.db.users.update_many(
-        {'username': {'$in': usernames}},
-        {'$set': {'activate': False}}
-    )
+    result = mongo.db.users.update_one({'username': username},
+                                       {'$set': {'activate': True}})
 
-    # $nin 연산자를 사용하여 목록에 포함되지 않은 사용자들의 activate 상태를 true로 설정합니다.
-    activate_result = mongo.db.users.update_many(
-        {'username': {'$nin': usernames}},
-        {'$set': {'activate': True}}
-    )
-
-    if deactivate_result.modified_count == 0 and activate_result.modified_count == 0:
+    if result == 0:
         return jsonify({'message': 'No changes were made'}), 404
 
-    return jsonify({
-        'message': f'{deactivate_result.modified_count} users deactivated and {activate_result.modified_count} users activated'
-    }), 200
+    return jsonify({'message': f'{username} activated'}), 200
+
+
+# auth - users deactivate
+@app.route('/user/<username>/deactivate', methods=['PUT'])
+@jwt_required()
+def deactivate_users(username):
+    # admin 유저 권한 확인
+    identity = get_jwt_identity()
+    if (identity.get("username") != identity.get("class")):
+        return jsonify({'message': 'Not authorized'}), 403
+
+    result = mongo.db.users.update_one({'username': username},
+                                       {'$set': {'activate': False}})
+
+    if result == 0:
+        return jsonify({'message': 'No changes were made'}), 404
+
+    return jsonify({'message': f'{username} deactivated'}), 200
 
 
 # auth - delete user
