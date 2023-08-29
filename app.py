@@ -436,9 +436,16 @@ def heartbeat():
 @app.route('/information/all', methods=['GET'])
 @jwt_required()
 def get_all_information():
+    # get settings
     settings = load_settings()
-    # check user authorization
-    auth_sites = user_auth_sites(get_jwt_identity().get('username'))
+
+    # for admin
+    current_user_identity = get_jwt_identity()
+    if (current_user_identity.get("username") == current_user_identity.get("class")):
+        return jsonify(settings)
+
+    # for user
+    auth_sites = user_auth_sites(current_user_identity.get('username'))
     auth_settings = {key: settings[key]
                      for key in settings.keys() if key in auth_sites}
     return jsonify(auth_settings)
