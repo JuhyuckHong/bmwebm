@@ -540,18 +540,26 @@ def recent_image(site):
 @app.route('/images/<site>/<date>/<photo>')
 @jwt_required()
 def get_single_image(site, date, photo):
-    # Open, resize, and save the image to a BytesIO object
-    image = Image.open(os.path.join(os.getenv('IMAGES'),
-                                    site,
-                                    date,
-                                    f'{photo}.jpg'))
-    image.thumbnail((1200, 1000))
-    byte_io = io.BytesIO()
-    image.save(byte_io, 'JPEG')
-    byte_io.seek(0)
+    # check user authorization
+    auth_sites = user_auth_sites(get_jwt_identity().get('username'))
+    if site in auth_sites:
+        return send_from_directory(os.path.join(os.getenv('IMAGES'),
+                                                site,
+                                                date), f'{photo}.jpg')
+    else:
+        return send_from_directory('static', 'no_image_today.jpg')
+    # # Open, resize, and save the image to a BytesIO object
+    # image = Image.open(os.path.join(os.getenv('IMAGES'),
+    #                                 site,
+    #                                 date,
+    #                                 f'{photo}.jpg'))
+    # image.thumbnail((1200, 1000))
+    # byte_io = io.BytesIO()
+    # image.save(byte_io, 'JPEG')
+    # byte_io.seek(0)
 
-    # Send the BytesIO object as a file
-    return send_file(byte_io, mimetype='image/jpeg')
+    # # Send the BytesIO object as a file
+    # return send_file(byte_io, mimetype='image/jpeg')
 
 
 # (Monitoring) Video list of Selected Site:
