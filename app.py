@@ -537,17 +537,19 @@ def recent_image(site):
 
 
 # (Monitoring) Selected Time-Specific Photo of the Site:
-@app.route('/images/<site>/<date>/<photo>')
+@app.route('/images/<site>/<date>/<photo>', methods=['GET'])
 @jwt_required()
 def get_single_image(site, date, photo):
+    # Using send from directory
     # check user authorization
     auth_sites = user_auth_sites(get_jwt_identity().get('username'))
     if site in auth_sites:
-        return send_from_directory(os.path.join(os.getenv('IMAGES'),
-                                                site,
-                                                date), f'{photo}.jpg')
+        path = os.path.join(os.getenv('IMAGES'), site, date)
+        file = f'{photo}.jpg'
+        return send_from_directory(path, file)
     else:
         return send_from_directory('static', 'no_image_today.jpg')
+
     # # Open, resize, and save the image to a BytesIO object
     # image = Image.open(os.path.join(os.getenv('IMAGES'),
     #                                 site,
