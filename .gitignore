@@ -166,3 +166,6 @@ sample1/
 sample2/
 sample3/
 settings.json
+
+# local notes (do not commit)
+local-notes/
