@@ -12,23 +12,37 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from glob import glob
 from apscheduler.schedulers.background import BackgroundScheduler
 import logging
+from logging.handlers import RotatingFileHandler
 from PIL import Image
 
 load_dotenv()
 
 app = Flask(__name__)
 
-# debug log setting
-debug_log_handler = logging.FileHandler('debug.log')
-debug_log_handler.setLevel(logging.DEBUG)
-debug_log_format = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
-debug_log_handler.setFormatter(debug_log_format)
+# log/ 디렉토리 생성
+os.makedirs('log', exist_ok=True)
 
-# info log setting
-info_log_handler = logging.FileHandler('info.log')
+log_format = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
+
+
+# DEBUG 레벨만 통과시키는 필터
+class DebugOnlyFilter(logging.Filter):
+    def filter(self, record):
+        return record.levelno == logging.DEBUG
+
+
+# debug.log: DEBUG 레벨만 (1MB 초과 시 log/debug.log.1 등으로 순환)
+debug_log_handler = RotatingFileHandler(
+    'log/debug.log', maxBytes=1_048_576, backupCount=5, encoding='utf-8')
+debug_log_handler.setLevel(logging.DEBUG)
+debug_log_handler.addFilter(DebugOnlyFilter())
+debug_log_handler.setFormatter(log_format)
+
+# info.log: INFO 이상 (1MB 초과 시 log/info.log.1 등으로 순환)
+info_log_handler = RotatingFileHandler(
+    'log/info.log', maxBytes=1_048_576, backupCount=5, encoding='utf-8')
 info_log_handler.setLevel(logging.INFO)
-info_log_format = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
-info_log_handler.setFormatter(info_log_format)
+info_log_handler.setFormatter(log_format)
 
 # add logger handler to Flask application
 app.logger.addHandler(debug_log_handler)
@@ -51,6 +65,12 @@ app.config['SCHEDULER_API_ENABLED'] = True
 jwt = JWTManager(app)
 mongo = PyMongo(app)
 scheduler = BackgroundScheduler()
+
+# APScheduler 에러를 info.log에 기록
+apscheduler_logger = logging.getLogger('apscheduler')
+apscheduler_logger.addHandler(info_log_handler)
+apscheduler_logger.setLevel(logging.WARNING)
+
 scheduler.start()
 
 
@@ -187,15 +207,22 @@ def making_setting_json():
     # Check ssh connection
     command = ["ssh", os.getenv("SSH_HOST"), '-p',
                os.getenv("SSH_PORT"), os.getenv("SSH_COMMAND")]
-    result = subprocess.run(
-        command, capture_output=True, text=True, check=True).stdout
-    result = [int(site.split('127.0.0.1:')[1].split(' ')[0].replace('22', ''))
-              for site in result.split('\n')[:-1]]
+    try:
+        result = subprocess.run(
+            command, capture_output=True, text=True, check=True).stdout
+        result = [int(site.split('127.0.0.1:')[1].split(' ')[0].replace('22', ''))
+                  for site in result.split('\n')[:-1]]
+    except subprocess.CalledProcessError as e:
+        app.logger.error(f'SSH connection check failed: {e}')
+        return
 
     # Get monitor image from server
     command_img = ["scp", "-P", os.getenv("SSH_PORT"),
                    os.getenv("SSH_HOST")+os.getenv("SCP_COMMAND"), "./static/"]
-    subprocess.run(command_img, text=True, check=True)
+    try:
+        subprocess.run(command_img, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        app.logger.error(f'SCP copy failed: {e}')
 
     for site_name, setting in settings.items():
         if int(setting['device_number'].replace('bmotion', '')) in result:
@@ -236,10 +263,12 @@ def signup():
     if not data or 'username' not in data or 'password' not in data:
         return jsonify({'message': 'Invalid data'}), 400
     if mongo.db.users.find_one({'username': data['username']}) or mongo.db.pending_users.find_one({'username': data['username']}):
+        app.logger.warning(f"Signup failed - username already exists: {data['username']}")
         return jsonify({'message': 'User already exists'}), 400
     hashed_password = generate_password_hash(data['password'])
     mongo.db.pending_users.insert_one(
         {'username': data['username'], 'password': hashed_password, 'code': data['code']})
+    app.logger.info(f"Signup requested: {data['username']}")
     return jsonify({'message': 'User registered, awaiting approval'}), 201
 
 
@@ -282,6 +311,7 @@ def approve_user(username):
     user['activate'] = True
     mongo.db.users.insert_one(user)
     mongo.db.pending_users.delete_one({'username': username})
+    app.logger.info(f"User approved: {username} by {current_user_identity.get('username')}")
     return jsonify({'message': f'User {username} approved and added to users'}), 200
 
 
@@ -298,6 +328,7 @@ def decline_user(username):
     if not user:
         return jsonify({'message': 'User not found in pending list'}), 404
     mongo.db.pending_users.delete_one({'username': username})
+    app.logger.info(f"User declined: {username} by {current_user_identity.get('username')}")
     return jsonify({'message': f'User {username} declined'}), 200
 
 
@@ -309,9 +340,11 @@ def login():
         return jsonify({'message': 'Invalid data'}), 400
     user = mongo.db.users.find_one({'username': data['username']})
     if not user or not check_password_hash(user['password'], data['password']):
+        app.logger.warning(f"Login failed: {data.get('username', 'unknown')} from {request.remote_addr}")
         return jsonify({'message': 'Invalid credentials'}), 400
     access_token = create_access_token(
         identity={'username': user['username'], 'class': user['class']})
+    app.logger.info(f"Login success: {user['username']} from {request.remote_addr}")
     return jsonify({'access_token': access_token, 'message': 'Login success.'}), 200
 
 
@@ -407,6 +440,7 @@ def delete_user(username):
     if result.deleted_count == 0:
         return jsonify({'message': 'User not found'}), 404
 
+    app.logger.warning(f"User deleted: {username} by {current_user_identity.get('username')}")
     return jsonify({'message': 'User successfully deleted'})
 
 
@@ -572,6 +606,7 @@ def get_daily_video_list(site):
     try:
         video_list = os.listdir(os.path.join('images', site, 'daily'))
     except Exception as e:
+        app.logger.error(f'Video list error for site {site}: {e}')
         return jsonify([]), 200
     # Send video list
     return jsonify(video_list), 200
