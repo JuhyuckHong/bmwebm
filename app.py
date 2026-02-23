@@ -256,6 +256,38 @@ def user_auth_sites(username):
     return data.get("sites")
 
 
+def read_paginated_logs(log_type, page, page_size):
+    base_log_path = os.path.join('log', f'{log_type}.log')
+    rotated_log_paths = sorted(
+        glob(f'{base_log_path}.*'),
+        key=lambda path: int(path.rsplit('.', 1)[1]) if path.rsplit('.', 1)[1].isdigit() else 10**9
+    )
+
+    log_paths = [base_log_path] + rotated_log_paths
+    log_lines = []
+
+    for path in log_paths:
+        if not os.path.exists(path):
+            continue
+
+        with open(path, 'r', encoding='utf-8', errors='replace') as f:
+            lines = f.readlines()
+            # 최신 로그가 먼저 오도록 파일 내부 라인 순서를 뒤집습니다.
+            for line in reversed(lines):
+                log_lines.append(line.rstrip('\n'))
+
+    total = len(log_lines)
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 0
+    start = (page - 1) * page_size
+    end = start + page_size
+
+    return {
+        "logs": log_lines[start:end],
+        "total": total,
+        "total_pages": total_pages
+    }
+
+
 # auth - signup
 @app.route('/signup', methods=['POST'])
 def signup():
@@ -663,6 +695,42 @@ def get_site_image_list_in_date(site, date):
 
     # Return the image list
     return jsonify(image_list), 200
+
+
+@app.route('/logs', methods=['GET'])
+@jwt_required()
+def get_logs():
+    # admin 유저 권한 확인
+    current_user_identity = get_jwt_identity()
+    if (current_user_identity.get("username") != current_user_identity.get("class")):
+        return jsonify({'message': 'Not authorized'}), 403
+
+    log_type = request.args.get('type', 'info').lower()
+    if log_type not in ['info', 'debug']:
+        return jsonify({'message': "Invalid type. Use 'info' or 'debug'."}), 400
+
+    try:
+        page = int(request.args.get('page', 1))
+        page_size = int(request.args.get('page_size', 50))
+    except ValueError:
+        return jsonify({'message': 'page and page_size must be integers.'}), 400
+
+    if page < 1 or page_size < 1:
+        return jsonify({'message': 'page and page_size must be greater than 0.'}), 400
+
+    # 과도한 요청 제한
+    page_size = min(page_size, 500)
+
+    logs = read_paginated_logs(log_type, page, page_size)
+
+    return jsonify({
+        'type': log_type,
+        'page': page,
+        'page_size': page_size,
+        'total': logs['total'],
+        'total_pages': logs['total_pages'],
+        'logs': logs['logs']
+    }), 200
 
 
 @app.route('/', methods=['GET'])
