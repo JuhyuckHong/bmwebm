@@ -204,31 +204,42 @@ def making_setting_json():
 
         settings[site_name] = site_settings
 
-    # Check ssh connection
-    command = ["ssh", os.getenv("SSH_HOST"), '-p',
-               os.getenv("SSH_PORT"), os.getenv("SSH_COMMAND")]
-    try:
-        result = subprocess.run(
-            command, capture_output=True, text=True, check=True).stdout
-        result = [int(site.split('127.0.0.1:')[1].split(' ')[0].replace('22', ''))
-                  for site in result.split('\n')[:-1]]
-    except subprocess.CalledProcessError as e:
-        app.logger.error(f'SSH connection check failed: {e}')
-        return
+    # Check connection via tailscale (primary) or SSH (fallback)
+    connected_devices = None
 
-    # Get monitor image from server
-    command_img = ["scp", "-P", os.getenv("SSH_PORT"),
-                   os.getenv("SSH_HOST")+os.getenv("SCP_COMMAND"), "./static/"]
+    # Primary: tailscale status
     try:
-        subprocess.run(command_img, text=True, check=True)
-    except subprocess.CalledProcessError as e:
-        app.logger.error(f'SCP copy failed: {e}')
+        ts_result = subprocess.run(
+            ["tailscale", "status", "--json"],
+            capture_output=True, text=True, check=True
+        )
+        ts_status = json.loads(ts_result.stdout)
+        connected_devices = {
+            peer["HostName"].lower()
+            for peer in ts_status.get("Peer", {}).values()
+            if peer.get("Online", False)
+        }
+        app.logger.info(f'Tailscale check succeeded: {connected_devices}')
+    except Exception as e:
+        app.logger.warning(f'Tailscale check failed, trying SSH fallback: {e}')
+
+    # Fallback: SSH
+    if connected_devices is None:
+        command = ["ssh", os.getenv("SSH_HOST"), '-p',
+                   os.getenv("SSH_PORT"), os.getenv("SSH_COMMAND")]
+        try:
+            result = subprocess.run(
+                command, capture_output=True, text=True, check=True).stdout
+            ssh_numbers = [int(site.split('127.0.0.1:')[1].split(' ')[0].replace('22', ''))
+                           for site in result.split('\n')[:-1]]
+            connected_devices = {f'bmotion{n}' for n in ssh_numbers}
+            app.logger.info(f'SSH fallback succeeded: {connected_devices}')
+        except subprocess.CalledProcessError as e:
+            app.logger.error(f'SSH connection check failed: {e}')
+            return
 
     for site_name, setting in settings.items():
-        if int(setting['device_number'].replace('bmotion', '')) in result:
-            settings[site_name]['ssh'] = True
-        else:
-            settings[site_name]['ssh'] = False
+        settings[site_name]['ssh'] = setting['device_number'].lower() in connected_devices
 
     settings_json = json.dumps(settings, indent=4)
     # Save Json into File
