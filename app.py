@@ -219,7 +219,7 @@ def making_setting_json():
             for peer in ts_status.get("Peer", {}).values()
             if peer.get("Online", False)
         }
-        app.logger.info(f'Tailscale check succeeded: {connected_devices}')
+        app.logger.info(f'Tailscale check succeeded: {sorted(connected_devices)}')
     except Exception as e:
         app.logger.warning(f'Tailscale check failed, trying SSH fallback: {e}')
 
