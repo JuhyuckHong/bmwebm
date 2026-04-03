@@ -98,12 +98,11 @@ def making_thumbnails():
     thumbnail_made_site = []
 
     # Remove thumbnails for subfolders that no longer exist
+    site_folder_set = {os.path.basename(subfolder) for subfolder in subfolders}
     for existing_thumbnail in existing_thumbnails:
         thumbnail_name = os.path.basename(existing_thumbnail)
         site = os.path.splitext(thumbnail_name)[0].replace('thumb_', '')
-        site_folder_list = [os.path.basename(
-            subfolder) for subfolder in subfolders]
-        if site not in site_folder_list:
+        if site not in site_folder_set:
             os.remove(existing_thumbnail)
             remove_site.append(site)
 
