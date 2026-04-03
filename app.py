@@ -131,6 +131,9 @@ def making_thumbnails():
 
         # If the folder exists, find the latest image file in the folder
         image_files = glob(os.path.join(image_folder, '*.jpg'))
+        if not image_files:
+            no_photo_yet_site.append(folder_name)
+            continue
         latest_image_file = max(image_files)
 
         # Generate the thumbnail of the latest image
@@ -174,8 +177,11 @@ def making_setting_json():
             file_path = os.path.join(site, 'setting', 'settings.txt')
             with open(file_path, 'r') as f:
                 for line in f:
-                    key, value = line.strip().split('=')
-                    site_settings[key] = value.strip('""')
+                    line = line.strip()
+                    if not line or '=' not in line:
+                        continue
+                    key, _, value = line.partition('=')
+                    site_settings[key.strip()] = value.strip().strip('"')
             # Calculate Shooting Count of today
             start_minutes = int(
                 site_settings["time_start"][:2]) * 60 + int(site_settings["time_start"][2:])
@@ -268,9 +274,15 @@ def making_setting_json():
 
 # Load settings from settings.json
 def load_settings():
-    with open('settings.json', 'r') as f:
-        settings = json.load(f)
-    return settings
+    if not os.path.exists('settings.json'):
+        app.logger.warning('settings.json not found')
+        return {}
+    try:
+        with open('settings.json', 'r') as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        app.logger.error(f'Failed to load settings.json: {e}')
+        return {}
 
 
 def user_auth_sites(username):
@@ -397,6 +409,9 @@ def login():
     if not user or not check_password_hash(user['password'], data['password']):
         app.logger.warning(f"Login failed: {data.get('username', 'unknown')} from {request.remote_addr}")
         return jsonify({'message': 'Invalid credentials'}), 400
+    if not user.get('activate', False):
+        app.logger.warning(f"Login blocked - deactivated user: {data['username']} from {request.remote_addr}")
+        return jsonify({'message': 'Account is deactivated'}), 403
     access_token = create_access_token(
         identity={'username': user['username'], 'class': user['class']})
     app.logger.info(f"Login success: {user['username']} from {request.remote_addr}")
@@ -432,6 +447,10 @@ def get_all_users():
 @app.route('/user/<username>/update', methods=['PUT'])
 @jwt_required()
 def update_user_sites(username):
+    current_user_identity = get_jwt_identity()
+    if (current_user_identity.get("username") != current_user_identity.get("class")):
+        return jsonify({'message': 'Not authorized'}), 403
+
     new_sites = request.json.get('sites', [])
     # remove duplicated sites
     new_sites = list(set(new_sites))
@@ -457,8 +476,8 @@ def activate_users(username):
     result = mongo.db.users.update_one({'username': username},
                                        {'$set': {'activate': True}})
 
-    if result == 0:
-        return jsonify({'message': 'No changes were made'}), 404
+    if result.matched_count == 0:
+        return jsonify({'message': 'User not found'}), 404
 
     return jsonify({'message': f'{username} activated'}), 200
 
@@ -475,8 +494,8 @@ def deactivate_users(username):
     result = mongo.db.users.update_one({'username': username},
                                        {'$set': {'activate': False}})
 
-    if result == 0:
-        return jsonify({'message': 'No changes were made'}), 404
+    if result.matched_count == 0:
+        return jsonify({'message': 'User not found'}), 404
 
     return jsonify({'message': f'{username} deactivated'}), 200
 
@@ -504,7 +523,12 @@ def delete_user(username):
 @jwt_required()
 def all_sites_name_list():
     settings = load_settings()
-    return jsonify(list(settings.keys())), 200
+    identity = get_jwt_identity()
+    if identity.get("username") == identity.get("class"):
+        return jsonify(list(settings.keys())), 200
+
+    auth_sites = user_auth_sites(identity.get('username'))
+    return jsonify([site for site in settings.keys() if site in auth_sites]), 200
 
 
 # (Monitoring) Heartbeat check
@@ -545,12 +569,20 @@ def get_all_information():
 @jwt_required()
 def get_site_information(site):
     settings = load_settings()
-    # check user authorization
-    auth_sites = user_auth_sites(get_jwt_identity().get('username'))
-    if site in settings and site in auth_sites:
-        return jsonify(settings[site])
-    else:
+    identity = get_jwt_identity()
+    is_admin = identity.get("username") == identity.get("class")
+
+    if site not in settings:
         return jsonify({"message": f"Site '{site}' not found"}), 404
+
+    if is_admin:
+        return jsonify(settings[site])
+
+    auth_sites = user_auth_sites(identity.get('username'))
+    if site in auth_sites:
+        return jsonify(settings[site])
+
+    return jsonify({"message": f"Site '{site}' not found"}), 404
 
 
 # (Monitoring) Thumbnails of Today's Photos from All Available Sites
@@ -596,6 +628,10 @@ def get_thumbnail_image(file):
 @app.route('/images/<site>/recent', methods=['GET'])
 @jwt_required()
 def recent_image(site):
+    auth_sites = user_auth_sites(get_jwt_identity().get('username'))
+    if site not in auth_sites:
+        return jsonify({"message": "Access denied."}), 403
+
     # Define the path of the site
     site_path = os.path.join(os.getenv("IMAGES"), site)
 
@@ -605,11 +641,17 @@ def recent_image(site):
     # Filter out items that are not directories
     date_folders = [folder for folder in date_folders if os.path.isdir(folder)]
 
+    if not date_folders:
+        return jsonify({"message": "No images available"}), 404
+
     # Find the most recent date folder
     recent_date_folder = max(date_folders, key=os.path.basename)
 
     # Get the list of all image files in the recent date folder
     image_files = glob(os.path.join(recent_date_folder, '*.jpg'))
+
+    if not image_files:
+        return jsonify({"message": "No images available"}), 404
 
     # Find the most recent image file based on the file name
     recent_image_file = max(image_files, key=os.path.basename)
@@ -632,12 +674,11 @@ def get_single_image(site, date, photo):
     # Using send from directory
     # check user authorization
     auth_sites = user_auth_sites(get_jwt_identity().get('username'))
-    if site in auth_sites:
-        path = os.path.join(os.getenv('IMAGES'), site, date)
-        file = f'{photo}.jpg'
-        return send_from_directory(path, file)
-    else:
-        return send_from_directory('static', 'no_image_today.jpg')
+    if site not in auth_sites:
+        return jsonify({"message": "Access denied."}), 403
+    path = os.path.join(os.getenv('IMAGES'), site, date)
+    file = f'{photo}.jpg'
+    return send_from_directory(path, file)
 
     # # Open, resize, and save the image to a BytesIO object
     # image = Image.open(os.path.join(os.getenv('IMAGES'),
@@ -657,6 +698,10 @@ def get_single_image(site, date, photo):
 @app.route('/video/<site>')
 @jwt_required()
 def get_daily_video_list(site):
+    auth_sites = user_auth_sites(get_jwt_identity().get('username'))
+    if site not in auth_sites:
+        return jsonify({"message": "Access denied."}), 403
+
     # Find video list
     try:
         video_list = os.listdir(os.path.join('images', site, 'daily'))
@@ -671,6 +716,10 @@ def get_daily_video_list(site):
 @app.route('/video/<site>/<video>')
 @jwt_required()
 def get_daily_video(site, video):
+    auth_sites = user_auth_sites(get_jwt_identity().get('username'))
+    if site not in auth_sites:
+        return jsonify({"message": "Access denied."}), 403
+
     # Make file name and check file exist
     video = os.path.join(os.getenv('IMAGES'),
                          site,
@@ -687,6 +736,10 @@ def get_daily_video(site, video):
 @app.route('/images/<site>', methods=['GET'])
 @jwt_required()
 def get_site_image_list_by_date(site):
+    auth_sites = user_auth_sites(get_jwt_identity().get('username'))
+    if site not in auth_sites:
+        return jsonify({"message": "Access denied."}), 403
+
     # Define the path of the site
     site_path = os.path.join(os.getenv("IMAGES"), site)
 
@@ -707,6 +760,10 @@ def get_site_image_list_by_date(site):
 @app.route('/images/<site>/<date>', methods=['GET'])
 @jwt_required()
 def get_site_image_list_in_date(site, date):
+    auth_sites = user_auth_sites(get_jwt_identity().get('username'))
+    if site not in auth_sites:
+        return jsonify({"message": "Access denied."}), 403
+
     # Define the path of the site and the date
     date_path = os.path.join(os.getenv("IMAGES"), site, date)
 
