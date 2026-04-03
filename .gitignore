@@ -169,3 +169,6 @@ settings.json
 
 # local notes (do not commit)
 local-notes/
+
+# logs
+log/
