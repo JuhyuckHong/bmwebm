@@ -76,7 +76,7 @@ scheduler.start()
 
 @scheduler.scheduled_job('cron',
                          id='making_thumbnails',
-                         hour='7-23',
+                         hour='*',
                          minute='*/10',
                          misfire_grace_time=10,
                          max_instances=3)
@@ -148,7 +148,7 @@ def making_thumbnails():
 
 @scheduler.scheduled_job('cron',
                          id='making_setting_json',
-                         hour='7-23',
+                         hour='*',
                          minute='*/10',
                          misfire_grace_time=10,
                          max_instances=3)
@@ -182,20 +182,32 @@ def making_setting_json():
             end_minutes = int(
                 site_settings["time_end"][:2]) * 60 + int(site_settings["time_end"][2:])
             interval_minutes = int(site_settings["time_interval"])
+            crosses_midnight = end_minutes < start_minutes
+            if crosses_midnight:
+                end_minutes += 1440
             site_settings["shooting_count"] = (
                 end_minutes - start_minutes) // interval_minutes + 1
             # Calculate Shooting Count of current time
             current_time = datetime.now()
-            current_minutes = min(current_time.hour *
-                                  60 + current_time.minute, end_minutes)
-            site_settings["shooting_count_till_now"] = (
-                current_minutes - start_minutes) // interval_minutes + 1
+            current_minutes_raw = current_time.hour * 60 + current_time.minute
+            current_minutes = current_minutes_raw + (1440 if crosses_midnight and current_minutes_raw < start_minutes else 0)
+            current_minutes = min(current_minutes, end_minutes)
+            site_settings["shooting_count_till_now"] = max(0, (
+                current_minutes - start_minutes) // interval_minutes + 1)
 
-        if today in folders:
-            # Counting Photo list of today
-            photos = os.listdir(os.path.join(site, today))
-            site_settings['photos_count'] = len(photos)
-            site_settings['recent_photo'] = photos[-1]
+        is_after_midnight = crosses_midnight and current_minutes_raw < start_minutes
+        if is_after_midnight:
+            yesterday = (current_time - timedelta(days=1)).strftime('%Y-%m-%d')
+            photo_folders = [f for f in [yesterday, today] if f in folders]
+        else:
+            photo_folders = [today] if today in folders else []
+
+        if photo_folders:
+            all_photos = []
+            for folder in photo_folders:
+                all_photos.extend(os.listdir(os.path.join(site, folder)))
+            site_settings['photos_count'] = len(all_photos)
+            site_settings['recent_photo'] = sorted(all_photos)[-1] if all_photos else "No Photo Available"
             created_setting_site.append(site.replace('images/', ' '))
         else:
             site_settings['photos_count'] = 0
