@@ -133,7 +133,7 @@ def making_thumbnails():
         # If the folder exists, find the latest image file in the folder
         image_files = glob(os.path.join(image_folder, '*.jpg'))
         if not image_files:
-            with Image.open('static\no_image_today.jpg') as img:
+            with Image.open('static/no_image_today.jpg') as img:
                 thumbnail_path = os.path.join(
                     'static', f'thumb_{folder_name}.jpg')
                 img.save(thumbnail_path)
@@ -331,9 +331,7 @@ def is_admin(identity):
 
 
 def check_site_access(identity, site):
-    """관리자이거나 사용자의 허가된 사이트면 True를 반환합니다."""
-    if is_admin(identity):
-        return True
+    """사용자의 허가된 사이트면 True를 반환합니다."""
     return site in user_auth_sites(identity.get('username'))
 
 
@@ -391,7 +389,7 @@ def signup():
 def list_pending_users():
     # admin 유저 권한 확인
     current_user_identity = get_jwt_identity()
-    if (current_user_identity.get("username") != current_user_identity.get("class")):
+    if (not is_admin(current_user_identity)):
         return jsonify({'message': 'Not authorized'}), 403
 
     users = mongo.db.pending_users.find()
@@ -413,7 +411,7 @@ def list_pending_users():
 def approve_user(username):
     # admin 유저 권한 확인
     current_user_identity = get_jwt_identity()
-    if (current_user_identity.get("username") != current_user_identity.get("class")):
+    if (not is_admin(current_user_identity)):
         return jsonify({'message': 'Not authorized'}), 403
 
     user = mongo.db.pending_users.find_one({'username': username})
@@ -434,7 +432,7 @@ def approve_user(username):
 def decline_user(username):
     # admin 유저 권한 확인
     current_user_identity = get_jwt_identity()
-    if (current_user_identity.get("username") != current_user_identity.get("class")):
+    if (not is_admin(current_user_identity)):
         return jsonify({'message': 'Not authorized'}), 403
 
     user = mongo.db.pending_users.find_one({'username': username})
@@ -480,7 +478,7 @@ def auth():
 def get_all_users():
     # admin 유저 권한 확인
     current_user_identity = get_jwt_identity()
-    if (current_user_identity.get("username") != current_user_identity.get("class")):
+    if (not is_admin(current_user_identity)):
         return jsonify({'message': 'Not authorized'}), 403
 
     # _id 필드는 제외하고 결과를 가져옵니다.
@@ -494,10 +492,15 @@ def get_all_users():
 @jwt_required()
 def update_user_sites(username):
     current_user_identity = get_jwt_identity()
-    if (current_user_identity.get("username") != current_user_identity.get("class")):
+    if (not is_admin(current_user_identity)):
         return jsonify({'message': 'Not authorized'}), 403
 
-    new_sites = request.json.get('sites', [])
+    body = request.get_json(silent=True)
+    if body is None:
+        return jsonify({'message': 'Invalid request body'}), 400
+    new_sites = body.get('sites', [])
+    if not isinstance(new_sites, list) or not all(isinstance(s, str) for s in new_sites):
+        return jsonify({'message': 'sites must be a list of strings'}), 400
     # remove duplicated sites
     new_sites = list(set(new_sites))
 
@@ -516,7 +519,7 @@ def update_user_sites(username):
 def activate_users(username):
     # admin 유저 권한 확인
     identity = get_jwt_identity()
-    if (identity.get("username") != identity.get("class")):
+    if (not is_admin(identity)):
         return jsonify({'message': 'Not authorized'}), 403
 
     result = mongo.db.users.update_one({'username': username},
@@ -534,7 +537,7 @@ def activate_users(username):
 def deactivate_users(username):
     # admin 유저 권한 확인
     identity = get_jwt_identity()
-    if (identity.get("username") != identity.get("class")):
+    if (not is_admin(identity)):
         return jsonify({'message': 'Not authorized'}), 403
 
     result = mongo.db.users.update_one({'username': username},
@@ -552,7 +555,7 @@ def deactivate_users(username):
 def delete_user(username):
     # admin 유저 권한 확인
     current_user_identity = get_jwt_identity()
-    if (current_user_identity.get("username") != current_user_identity.get("class")):
+    if (not is_admin(current_user_identity)):
         return jsonify({'message': 'Not authorized'}), 403
 
     result = mongo.db.users.delete_one({'username': username})
@@ -569,8 +572,8 @@ def delete_user(username):
 @jwt_required()
 def all_sites_name_list():
     settings = load_settings()
-    identity = get_jwt_identity()
-    return jsonify([site for site in settings.keys() if check_site_access(identity, site)]), 200
+    auth_sites = set(user_auth_sites(get_jwt_identity().get('username')))
+    return jsonify([site for site in settings.keys() if site in auth_sites]), 200
 
 
 # (Monitoring) Heartbeat check
@@ -592,9 +595,8 @@ def heartbeat():
 @jwt_required()
 def get_all_information():
     settings = load_settings()
-    identity = get_jwt_identity()
-    auth_settings = {key: settings[key]
-                     for key in settings.keys() if check_site_access(identity, key)}
+    auth_sites = set(user_auth_sites(get_jwt_identity().get('username')))
+    auth_settings = {key: settings[key] for key in settings.keys() if key in auth_sites}
     return jsonify(auth_settings)
 
 
@@ -619,12 +621,12 @@ def get_site_information(site):
 @jwt_required()
 def get_thumbnails():
     # check user authorization
-    identity = get_jwt_identity()
+    auth_sites = set(user_auth_sites(get_jwt_identity().get('username')))
     thumbnail_files = glob('static/thumb_*.jpg')
     thumbnail_list = list()
     for file in thumbnail_files:
         site = os.path.basename(file).replace('thumb_', '').replace('.jpg', '')
-        if check_site_access(identity, site):
+        if site in auth_sites:
             thumbnail_url = os.path.basename(file)
             thumbnail_dict = {'site': site, 'url': thumbnail_url}
             thumbnail_list.append(thumbnail_dict)
@@ -647,15 +649,15 @@ def get_thumbnail_image(file):
                        for filename in glob('static/thumb_*.jpg')]
 
     if token and file in thumbnail_files:
-        verify_jwt_in_request()
+        try:
+            verify_jwt_in_request()
+        except Exception:
+            return jsonify({"message": "Not found."}), 404
         identity = get_jwt_identity()
         site = file.replace('thumb_', '').split('.')[0]
         if check_site_access(identity, site):
             return send_from_directory('static', file)
-        else:
-            return jsonify({"message": "Not found."}), 404
-    else:
-        return jsonify({"message": "Not found."}), 404
+    return jsonify({"message": "Not found."}), 404
 
 
 # (Monitoring) Recent Images of a Site:
@@ -709,9 +711,16 @@ def get_single_image(site, date, photo):
     # check user authorization
     if not check_site_access(get_jwt_identity(), site):
         return jsonify({"message": "Not found."}), 404
-    path = os.path.join(os.getenv('IMAGES'), site, date)
+    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date):
+        return jsonify({"message": "Not found."}), 404
+    base_dir = os.path.realpath(os.path.join(os.getenv('IMAGES'), site))
+    date_path = os.path.realpath(os.path.join(base_dir, date))
+    if not date_path.startswith(base_dir + os.sep):
+        return jsonify({"message": "Not found."}), 404
+    if not re.fullmatch(r'[\w\-]+', photo):
+        return jsonify({"message": "Not found."}), 404
     file = f'{photo}.jpg'
-    return send_from_directory(path, file)
+    return send_from_directory(date_path, file)
 
     # # Open, resize, and save the image to a BytesIO object
     # image = Image.open(os.path.join(os.getenv('IMAGES'),
@@ -736,11 +745,12 @@ def get_daily_video_list(site):
 
     # Find video list
     try:
-        video_list = os.listdir(os.path.join(os.getenv('IMAGES'), site, 'daily'))
+        all_files = os.listdir(os.path.join(os.getenv('IMAGES'), site, 'daily'))
     except Exception as e:
         app.logger.error(f'Video list error for site {site}: {e}')
         return jsonify([]), 200
-    # Send video list
+    allowed_exts = {'.mp4', '.gif'}
+    video_list = sorted(f for f in all_files if os.path.splitext(f)[1].lower() in allowed_exts)
     return jsonify(video_list), 200
 
 
@@ -751,16 +761,20 @@ def get_daily_video(site, video):
     if not check_site_access(get_jwt_identity(), site):
         return jsonify({"message": "Not found."}), 404
 
-    # Make file name and check file exist
-    video = os.path.join(os.getenv('IMAGES'),
-                         site,
-                         'daily',
-                         video)
-    if not os.path.exists(video):
+    base_dir = os.path.realpath(os.path.join(os.getenv('IMAGES'), site, 'daily'))
+    video_path = os.path.realpath(os.path.join(base_dir, video))
+    if not video_path.startswith(base_dir + os.sep):
+        return jsonify({"message": "Not found."}), 404
+
+    ext = os.path.splitext(video_path)[1].lower()
+    mime_map = {'.mp4': 'video/mp4', '.gif': 'image/gif'}
+    if ext not in mime_map:
+        return jsonify({"message": "Not found."}), 404
+
+    if not os.path.isfile(video_path):
         return jsonify({"message": "daily video not found"}), 404
 
-    # Send video by blob
-    return send_file(video, mimetype='video/mp4', as_attachment=False)
+    return send_file(video_path, mimetype=mime_map[ext], as_attachment=False)
 
 
 # (Monitoring) List of Date Folders:
@@ -779,8 +793,8 @@ def get_site_image_list_by_date(site):
     # Filter out items that are not directories
     folder_list = [folder for folder in folder_list if os.path.isdir(folder)]
 
-    # Extract the date part from each folder
-    date_list = [os.path.basename(folder) for folder in folder_list]
+    # Extract the date part from each folder, sorted descending (newest first)
+    date_list = sorted([os.path.basename(folder) for folder in folder_list], reverse=True)
 
     # Return the date list
     return jsonify(date_list), 200
@@ -792,15 +806,19 @@ def get_site_image_list_by_date(site):
 def get_site_image_list_in_date(site, date):
     if not check_site_access(get_jwt_identity(), site):
         return jsonify({"message": "Not found."}), 404
+    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date):
+        return jsonify({"message": "Not found."}), 404
 
-    # Define the path of the site and the date
-    date_path = os.path.join(os.getenv("IMAGES"), site, date)
+    base_dir = os.path.realpath(os.path.join(os.getenv("IMAGES"), site))
+    date_path = os.path.realpath(os.path.join(base_dir, date))
+    if not date_path.startswith(base_dir + os.sep):
+        return jsonify({"message": "Not found."}), 404
 
     # Get the list of image files in the date folder
     image_files = glob(os.path.join(date_path, '*.jpg'))
 
-    # Extract the filename from each image file
-    image_list = [os.path.basename(file) for file in image_files]
+    # Extract the filename from each image file, sorted ascending
+    image_list = sorted(os.path.basename(file) for file in image_files)
 
     # Return the image list
     return jsonify(image_list), 200
@@ -811,7 +829,7 @@ def get_site_image_list_in_date(site, date):
 def get_logs():
     # admin 유저 권한 확인
     current_user_identity = get_jwt_identity()
-    if (current_user_identity.get("username") != current_user_identity.get("class")):
+    if (not is_admin(current_user_identity)):
         return jsonify({'message': 'Not authorized'}), 403
 
     log_type = request.args.get('type', 'info').lower()
