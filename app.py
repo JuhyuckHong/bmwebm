@@ -179,6 +179,9 @@ def making_setting_json():
             continue
         else:
             file_path = os.path.join(site, 'setting', 'settings.txt')
+            if not os.path.exists(file_path):
+                setting_missing_site.append(site.replace('images/', ' '))
+                continue
             with open(file_path, 'r') as f:
                 for line in f:
                     line = line.strip()
@@ -326,7 +329,7 @@ def user_auth_sites(username):
 
 
 def is_admin(identity):
-    return identity.get("username") == identity.get("class")
+    return identity.get("class") == "bmotion"
 
 
 def check_site_access(identity, site):
