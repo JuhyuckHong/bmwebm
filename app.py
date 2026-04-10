@@ -574,7 +574,10 @@ def delete_user(username):
 @jwt_required()
 def all_sites_name_list():
     settings = load_settings()
-    auth_sites = set(user_auth_sites(get_jwt_identity().get('username')))
+    identity = get_jwt_identity()
+    if is_admin(identity):
+        return jsonify(list(settings.keys())), 200
+    auth_sites = set(user_auth_sites(identity.get('username')))
     return jsonify([site for site in settings.keys() if site in auth_sites]), 200
 
 
