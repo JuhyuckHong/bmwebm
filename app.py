@@ -75,6 +75,22 @@ apscheduler_logger.setLevel(logging.WARNING)
 scheduler.start()
 
 
+def list_photo_filenames(directory):
+    photo_filenames = []
+
+    for entry in os.listdir(directory):
+        entry_path = os.path.join(directory, entry)
+        if not os.path.isfile(entry_path):
+            continue
+
+        if os.path.splitext(entry)[1].lower() not in {'.jpg', '.jpeg'}:
+            continue
+
+        photo_filenames.append(entry)
+
+    return sorted(photo_filenames)
+
+
 @scheduler.scheduled_job('cron',
                          id='making_thumbnails',
                          hour='*',
@@ -233,7 +249,9 @@ def making_setting_json():
         if photo_folders:
             all_photos = []
             for folder in photo_folders:
-                all_photos.extend(os.listdir(os.path.join(site, folder)))
+                all_photos.extend(
+                    list_photo_filenames(os.path.join(site, folder))
+                )
             site_settings['photos_count'] = len(all_photos)
             site_settings['recent_photo'] = sorted(all_photos)[-1] if all_photos else "No Photo Available"
             created_setting_site.append(site.replace('images/', ' '))
