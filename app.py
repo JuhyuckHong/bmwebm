@@ -269,7 +269,7 @@ def making_setting_json():
     try:
         ts_result = subprocess.run(
             ["tailscale", "status", "--json"],
-            capture_output=True, text=True, check=True
+            capture_output=True, text=True, encoding="utf-8", check=True
         )
         ts_status = json.loads(ts_result.stdout)
         connected_devices = {
@@ -295,7 +295,7 @@ def making_setting_json():
                     port = match.group(1).replace('22', '')
                     if port.isdigit():
                         ssh_numbers.append(int(port))
-            connected_devices = {f'bmotion{n}' for n in ssh_numbers}
+            connected_devices = {f'bmotion{n:03d}' for n in ssh_numbers}
             app.logger.info(f'SSH fallback succeeded: {connected_devices}')
         except subprocess.CalledProcessError as e:
             app.logger.error(f'SSH connection check failed: {e}')
