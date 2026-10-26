@@ -18,7 +18,10 @@ from PIL import Image
 
 load_dotenv()
 
-app = Flask(__name__)
+# static_folder=None: the default /static route would serve thumbnails without the auth check below
+app = Flask(__name__, static_folder=None)
+# Only small JSON bodies are expected
+app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024
 
 # log/ 디렉토리 생성
 os.makedirs('log', exist_ok=True)
