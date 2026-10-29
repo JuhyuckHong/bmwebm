@@ -55,9 +55,11 @@ app.logger.addHandler(info_log_handler)
 # set log level to debug
 app.logger.setLevel(logging.DEBUG)
 
-# CORS setting
+# CORS setting (FRONT_EXTRA: more front-end origins, comma-separated)
+FRONT_ORIGINS = [os.getenv('FRONT_DEV'), os.getenv('FRONT_PRD'),
+                 *os.getenv('FRONT_EXTRA', '').split(',')]
 CORS(app, resources={
-     r"/*": {"origins": [os.getenv('FRONT_DEV'), os.getenv('FRONT_PRD')]}})
+     r"/*": {"origins": [o.strip().rstrip('/') for o in FRONT_ORIGINS if o and o.strip()]}})
 
 
 app.config['MONGO_URI'] = os.getenv('MONGO_URI')
