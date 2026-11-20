@@ -96,6 +96,43 @@ def list_photo_filenames(directory):
     return sorted(photo_filenames)
 
 
+def save_thumbnail(source_path, thumbnail_path, resize=True):
+    # Write to a temp file first so a failed save never leaves a broken thumbnail
+    temp_path = thumbnail_path + '.tmp'
+    with Image.open(source_path) as img:
+        if resize:
+            img.thumbnail((300, 200))
+        img.save(temp_path, format='JPEG')
+    os.replace(temp_path, thumbnail_path)
+
+
+def make_site_thumbnail(folder_name, today):
+    """Return True if made from a photo, False if no_image_today was used, None if skipped."""
+    # Try to find the settings folder,
+    # If not found, skip.
+    setting_folder = os.path.join(os.getenv("IMAGES"), folder_name, 'setting')
+    if not os.path.exists(setting_folder):
+        return None
+
+    thumbnail_path = os.path.join('static', f'thumb_{folder_name}.jpg')
+    image_folder = os.path.join(os.getenv("IMAGES"), folder_name, today)
+    image_files = glob(os.path.join(image_folder, '*.jpg'))
+
+    # Newest first; skip empty or unreadable files (e.g. 0-byte uploads) and use the one before
+    for image_file in sorted(image_files, reverse=True):
+        if os.path.getsize(image_file) == 0:
+            continue
+        try:
+            save_thumbnail(image_file, thumbnail_path)
+            return True
+        except Exception as e:
+            app.logger.warning(f'Skipping unreadable photo {image_file}: {e}')
+
+    # No folder for today, or no readable photo in it
+    save_thumbnail('static/no_image_today.jpg', thumbnail_path, resize=False)
+    return False
+
+
 @scheduler.scheduled_job('cron',
                          id='making_thumbnails',
                          hour='*',
@@ -117,6 +154,7 @@ def making_thumbnails():
     remove_site = []
     no_photo_yet_site = []
     thumbnail_made_site = []
+    thumbnail_failed_site = []
 
     # Remove thumbnails for subfolders that no longer exist
     site_folder_set = {os.path.basename(subfolder) for subfolder in subfolders}
@@ -128,50 +166,27 @@ def making_thumbnails():
             remove_site.append(site)
 
     # Process all the folders
+    # One site's broken photo must not stop the thumbnails of the sites after it
     for folder_path in subfolders:
         folder_name = os.path.basename(folder_path)
-
-        # Try to find the settings folder,
-        # If not found, skip.
-        setting_folder = os.path.join(
-            os.getenv("IMAGES"), folder_name, 'setting')
-        if not os.path.exists(setting_folder):
+        try:
+            made = make_site_thumbnail(folder_name, today)
+        except Exception as e:
+            app.logger.warning(f'Thumbnail failed for {folder_name}: {e}')
+            thumbnail_failed_site.append(folder_name)
             continue
-
-        # Try to find the folder for today's date
-        image_folder = os.path.join(
-            os.getenv("IMAGES"), folder_name, today)
-        if not os.path.exists(image_folder):
-            # If the folder does not exist, use no_image_today.jpg
-            with Image.open('static/no_image_today.jpg') as img:
-                thumbnail_path = os.path.join(
-                    'static', f'thumb_{folder_name}.jpg')
-                img.save(thumbnail_path)
-                no_photo_yet_site.append(folder_name)
+        if made is None:
             continue
-
-        # If the folder exists, find the latest image file in the folder
-        image_files = glob(os.path.join(image_folder, '*.jpg'))
-        if not image_files:
-            with Image.open('static/no_image_today.jpg') as img:
-                thumbnail_path = os.path.join(
-                    'static', f'thumb_{folder_name}.jpg')
-                img.save(thumbnail_path)
-                no_photo_yet_site.append(folder_name)
-            continue
-        latest_image_file = max(image_files)
-
-        # Generate the thumbnail of the latest image
-        with Image.open(latest_image_file) as img:
-            img.thumbnail((300, 200))
-            thumbnail_path = os.path.join(
-                'static', f'thumb_{folder_name}.jpg')
-            img.save(thumbnail_path)
+        if made:
             thumbnail_made_site.append(folder_name)
+        else:
+            no_photo_yet_site.append(folder_name)
 
     app.logger.info(f'Sites removed                : {remove_site}')
     app.logger.info(f'Sites with no photos yet     : {no_photo_yet_site}')
     app.logger.info(f'Sites with thumbnails created: {thumbnail_made_site}')
+    if thumbnail_failed_site:
+        app.logger.warning(f'Sites with thumbnail failures: {thumbnail_failed_site}')
 
 
 @scheduler.scheduled_job('cron',
